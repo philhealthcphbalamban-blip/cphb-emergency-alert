@@ -24,7 +24,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
-import { StaffService, AdminAuthService } from '@/lib/staffService';
+import { StaffService, AdminAuthService, DEFAULT_CPHB_STAFF } from '@/lib/staffService';
 import * as XLSX from 'xlsx';
 
 export default function AdminUsersPage() {
@@ -69,23 +69,17 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    // Initialize Cloud Sync across devices
     StaffService.initCloudSync();
 
-    const current = StaffService.getCurrentStaff();
     const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
-
-    // ONLY allow access if actively on Admin profile AND unlocked with PIN!
-    if (current && current.is_admin && isUnlocked === 'true') {
+    if (isUnlocked === 'true') {
       setIsAuthenticated(true);
     } else {
       setIsAuthenticated(false);
-      sessionStorage.removeItem('cphb_admin_unlocked');
     }
 
     reloadStaff();
 
-    // Auto-fetch latest staff from Supabase Cloud
     StaffService.fetchStaffFromCloud().then((cloudList) => {
       if (cloudList && cloudList.length > 0) {
         setStaffList(cloudList);
@@ -93,19 +87,9 @@ export default function AdminUsersPage() {
     });
 
     const handler = () => reloadStaff();
-    const staffHandler = (e: any) => {
-      const staff = e.detail || StaffService.getCurrentStaff();
-      if (!staff.is_admin) {
-        setIsAuthenticated(false);
-        sessionStorage.removeItem('cphb_admin_unlocked');
-      }
-    };
-
     window.addEventListener('cphb_staff_directory_updated', handler);
-    window.addEventListener('cphb_staff_changed', staffHandler);
     return () => {
       window.removeEventListener('cphb_staff_directory_updated', handler);
-      window.removeEventListener('cphb_staff_changed', staffHandler);
     };
   }, []);
 
@@ -123,13 +107,13 @@ export default function AdminUsersPage() {
     if (AdminAuthService.verifyPin(adminPin)) {
       setIsAuthenticated(true);
       sessionStorage.setItem('cphb_admin_unlocked', 'true');
-      const adminStaff = StaffService.getAllStaff().find(s => s.is_admin) || StaffService.getAllStaff()[0];
+      const adminStaff = StaffService.getAllStaff().find(s => s.is_admin) || DEFAULT_CPHB_STAFF[0];
       if (adminStaff) {
         StaffService.setCurrentStaff(adminStaff);
       }
       setPinError('');
     } else {
-      setPinError('Sayop ang Admin PIN!');
+      setPinError('Sayop ang Admin PIN! (Default: 1234)');
     }
   };
 
@@ -161,6 +145,7 @@ export default function AdminUsersPage() {
 
   const handleLogoutAdmin = () => {
     setIsAuthenticated(false);
+    setAdminPin('');
     sessionStorage.removeItem('cphb_admin_unlocked');
     const otherStaff = StaffService.getAllStaff().find(s => !s.is_admin) || StaffService.getAllStaff()[0];
     if (otherStaff) {
@@ -413,6 +398,7 @@ export default function AdminUsersPage() {
                 value={adminPin}
                 onChange={(e) => setAdminPin(e.target.value)}
                 placeholder="Default: 1234"
+                autoComplete="new-password"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold text-center tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
                 autoFocus
               />
