@@ -1,0 +1,18 @@
+{
+  "hospital_name": "Cebu Provincial Hospital - Balamban (CPHB)",
+  "cloud_api_url": "https://cphb-emergency-alert.vercel.app/api/ihomis/patients",
+  "sync_interval_seconds": 60,
+  "database": {
+    "enabled": false,
+    "client": "postgres",
+    "host": "localhost",
+    "port": 5432,
+    "user": "postgres",
+    "password": "your_ihomis_db_password",
+    "database": "ihomis_db"
+  },
+  "csv_watch_folder": {
+    "enabled": true,
+    "watch_directory": "./ihomis_exports"
+  }
+}

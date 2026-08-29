@@ -21,13 +21,13 @@ function getSupabase() {
 // In-memory fallback
 let inMemoryPatientsCache: IHOMISPatient[] = [...MOCK_IHOMIS_PATIENTS];
 
-// GET /api/ihomis/patients -> Fetches cloud synced patient census
+// GET /api/ihomis/patients -> Fetches cloud synced patient census & live metrics
 export async function GET() {
   try {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('emergency_audit_logs')
-      .select('details')
+      .select('details, created_at')
       .eq('event_type', 'IHOMIS_PATIENTS_SYNC')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -39,6 +39,8 @@ export async function GET() {
         success: true,
         count: data.details.patients.length,
         patients: data.details.patients,
+        metrics: data.details.metrics || null,
+        last_synced_at: data.details.updated_at || data.created_at,
         source: 'cloud',
       });
     }
@@ -47,6 +49,7 @@ export async function GET() {
       success: true,
       count: inMemoryPatientsCache.length,
       patients: inMemoryPatientsCache,
+      last_synced_at: new Date().toISOString(),
       source: 'fallback',
     });
   } catch (err: any) {
@@ -60,26 +63,55 @@ export async function GET() {
   }
 }
 
-// POST /api/ihomis/patients -> Saves updated patient census to Supabase cloud
+// POST /api/ihomis/patients -> Saves updated patient census to Supabase cloud (Supports Automated LAN Bridge & Manual Webhook)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const patients: IHOMISPatient[] = body.patients;
+    const incomingPatients: IHOMISPatient[] = body.patients;
 
-    if (!Array.isArray(patients)) {
+    if (!Array.isArray(incomingPatients)) {
       return NextResponse.json({ success: false, error: 'Patients array required' }, { status: 400 });
     }
 
-    inMemoryPatientsCache = patients;
+    let finalPatients: IHOMISPatient[];
+
+    // If partial sync (e.g. only syncing EMERGENCY module from LAN bridge)
+    if (body.module && typeof body.module === 'string') {
+      const otherModulePatients = inMemoryPatientsCache.filter(p => p.source_module !== body.module);
+      finalPatients = [...incomingPatients, ...otherModulePatients];
+    } else {
+      finalPatients = incomingPatients;
+    }
+
+    inMemoryPatientsCache = finalPatients;
+
+    // Calculate live dynamic metrics
+    const inpatientCount = finalPatients.filter(p => p.source_module === 'ADMISSION').length;
+    const erCount = finalPatients.filter(p => p.source_module === 'EMERGENCY').length;
+    const opdCount = finalPatients.filter(p => p.source_module === 'OUTPATIENT').length;
+    const maleCount = finalPatients.filter(p => p.gender === 'MALE').length;
+    const femaleCount = finalPatients.filter(p => p.gender === 'FEMALE').length;
+
+    const metrics = {
+      activeAdmissions: inpatientCount,
+      erEncounters: erCount,
+      outpatientConsultations: opdCount,
+      admissionsMale: maleCount,
+      admissionsFemale: femaleCount,
+      totalCensus: finalPatients.length,
+    };
+
     const supabase = getSupabase();
 
     try {
       await supabase.from('emergency_audit_logs').insert({
         event_type: 'IHOMIS_PATIENTS_SYNC',
-        actor_name: body.synced_by || 'Hospital Administrator',
+        actor_name: body.synced_by || 'iHOMIS Plus LAN Auto-Bridge Daemon',
         details: {
-          patients,
-          total_count: patients.length,
+          patients: finalPatients,
+          total_count: finalPatients.length,
+          metrics,
+          sync_source: body.sync_source || 'LAN_AUTO_BRIDGE',
           updated_at: new Date().toISOString(),
         },
       });
@@ -90,7 +122,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'iHOMIS census synced to cloud successfully',
-      count: patients.length,
+      count: finalPatients.length,
+      metrics,
+      synced_at: new Date().toISOString(),
     });
   } catch (err: any) {
     console.error('Error in POST /api/ihomis/patients:', err);
