@@ -4,52 +4,84 @@ import { IHOMISPatient } from '@/types/ihomis';
 import { EMERGENCY_CODES } from './constants';
 import { IHOMISService } from './ihomisService';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
   supabaseAnonKey && 
+  supabaseUrl.startsWith('http') &&
   !supabaseUrl.includes('placeholder')
 );
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+function createSafeSupabaseClient(): SupabaseClient | null {
+  if (!isSupabaseConfigured) return null;
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      }
+    });
+  } catch (e) {
+    console.warn('Could not initialize Supabase client:', e);
+    return null;
+  }
+}
+
+export const supabase: SupabaseClient | null = createSafeSupabaseClient();
 
 // Multi-tab BroadcastChannel for zero-latency local realtime syncing & offline fallback
 const LOCAL_STORAGE_KEY_ALERTS = 'hospital_emergency_alerts_v1';
 const CHANNEL_NAME = 'hospital_realtime_alert_bus';
 
 export class EmergencyService {
-  private static channel: BroadcastChannel | null = typeof window !== 'undefined' ? new BroadcastChannel(CHANNEL_NAME) : null;
+  private static channel: BroadcastChannel | null = null;
   private static listeners: Set<(alert: EmergencyAlert | null, event: string) => void> = new Set();
+  private static isInitialized = false;
 
   public static init() {
     if (typeof window === 'undefined') return;
+    if (this.isInitialized) return;
+    this.isInitialized = true;
 
-    if (!this.channel) {
-      this.channel = new BroadcastChannel(CHANNEL_NAME);
+    try {
+      if (typeof window.BroadcastChannel !== 'undefined') {
+        this.channel = new BroadcastChannel(CHANNEL_NAME);
+        this.channel.onmessage = (event) => {
+          if (event && event.data) {
+            const { type, payload } = event.data;
+            this.listeners.forEach((listener) => {
+              try {
+                listener(payload, type);
+              } catch (err) {
+                console.error('Error in alert listener:', err);
+              }
+            });
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel not supported or error:', e);
     }
-
-    this.channel.onmessage = (event) => {
-      const { type, payload } = event.data;
-      this.listeners.forEach((listener) => listener(payload, type));
-    };
 
     // Also subscribe to Supabase Realtime if configured
     if (supabase) {
-      supabase
-        .channel('public:emergency_alerts')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'emergency_alerts' },
-          async (changePayload) => {
-            const activeAlert = await this.getActiveAlert();
-            this.notifyListeners(activeAlert, changePayload.eventType);
-          }
-        )
-        .subscribe();
+      try {
+        supabase
+          .channel('public:emergency_alerts')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'emergency_alerts' },
+            async (changePayload) => {
+              const activeAlert = await this.getActiveAlert();
+              this.notifyListeners(activeAlert, changePayload.eventType);
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn('Supabase realtime subscription error:', e);
+      }
     }
   }
 
@@ -62,9 +94,19 @@ export class EmergencyService {
 
   private static notifyListeners(alert: EmergencyAlert | null, eventType: string) {
     if (this.channel) {
-      this.channel.postMessage({ type: eventType, payload: alert });
+      try {
+        this.channel.postMessage({ type: eventType, payload: alert });
+      } catch (e) {
+        console.warn('Error posting to BroadcastChannel:', e);
+      }
     }
-    this.listeners.forEach((listener) => listener(alert, eventType));
+    this.listeners.forEach((listener) => {
+      try {
+        listener(alert, eventType);
+      } catch (err) {
+        console.error('Error in listener callback:', err);
+      }
+    });
   }
 
   // Get current active alert
@@ -77,7 +119,7 @@ export class EmergencyService {
           .in('status', ['ACTIVE', 'RESPONDING'])
           .order('triggered_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (data && !error) {
           const patient = data.patient_details || IHOMISService.findPatientByLocation(data.location_text);
@@ -94,18 +136,22 @@ export class EmergencyService {
 
     // LocalStorage Fallback
     if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
-      if (raw) {
-        const alerts: EmergencyAlert[] = JSON.parse(raw);
-        const active = alerts.find(a => a.status === 'ACTIVE' || a.status === 'RESPONDING');
-        if (active) {
-          const patient = active.patient_details || IHOMISService.findPatientByLocation(active.location_text);
-          return {
-            ...active,
-            code_details: EMERGENCY_CODES[active.code_id] || EMERGENCY_CODES.code_blue,
-            patient_details: patient,
-          };
+      try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
+        if (raw) {
+          const alerts: EmergencyAlert[] = JSON.parse(raw);
+          const active = alerts.find(a => a.status === 'ACTIVE' || a.status === 'RESPONDING');
+          if (active) {
+            const patient = active.patient_details || IHOMISService.findPatientByLocation(active.location_text);
+            return {
+              ...active,
+              code_details: EMERGENCY_CODES[active.code_id] || EMERGENCY_CODES.code_blue,
+              patient_details: patient,
+            };
+          }
         }
+      } catch (e) {
+        console.warn('Error reading from localStorage:', e);
       }
     }
     return null;
@@ -133,13 +179,17 @@ export class EmergencyService {
     }
 
     if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
-      if (raw) {
-        return JSON.parse(raw).map((d: EmergencyAlert) => ({
-          ...d,
-          code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
-          patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
-        }));
+      try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
+        if (raw) {
+          return JSON.parse(raw).map((d: EmergencyAlert) => ({
+            ...d,
+            code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
+            patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
+          }));
+        }
+      } catch (e) {
+        console.warn('Error reading localStorage history:', e);
       }
     }
     return [];
@@ -179,6 +229,7 @@ export class EmergencyService {
           triggered_by_role: newAlert.triggered_by_role,
           triggered_at: newAlert.triggered_at,
           patient_id_optional: patient?.hrn || null,
+          patient_details: patient || null,
         });
       } catch (e) {
         console.error('Failed inserting to Supabase:', e);
@@ -187,9 +238,13 @@ export class EmergencyService {
 
     // Save locally
     if (typeof window !== 'undefined') {
-      const history = await this.getAllAlerts();
-      const updated = [newAlert, ...history.filter(h => h.id !== newAlert.id)];
-      localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(updated));
+      try {
+        const history = await this.getAllAlerts();
+        const updated = [newAlert, ...history.filter(h => h.id !== newAlert.id)];
+        localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed saving alert locally:', e);
+      }
     }
 
     this.notifyListeners(newAlert, 'TRIGGERED');
@@ -227,15 +282,19 @@ export class EmergencyService {
 
     // Local save
     if (typeof window !== 'undefined') {
-      const history = await this.getAllAlerts();
-      const target = history.find(a => a.id === params.alert_id);
-      if (target) {
-        target.status = 'RESPONDING';
-        if (!target.acknowledged_at) target.acknowledged_at = new Date().toISOString();
-        if (!target.responders) target.responders = [];
-        target.responders.push(newResponder);
-        localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-        this.notifyListeners(target, 'RESPONDER_ADDED');
+      try {
+        const history = await this.getAllAlerts();
+        const target = history.find(a => a.id === params.alert_id);
+        if (target) {
+          target.status = 'RESPONDING';
+          if (!target.acknowledged_at) target.acknowledged_at = new Date().toISOString();
+          if (!target.responders) target.responders = [];
+          target.responders.push(newResponder);
+          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
+          this.notifyListeners(target, 'RESPONDER_ADDED');
+        }
+      } catch (e) {
+        console.warn('Failed saving responder locally:', e);
       }
     }
 
@@ -245,16 +304,20 @@ export class EmergencyService {
   // Mark Responder as Arrived On Scene
   public static async markOnScene(alert_id: string, responder_id: string) {
     if (typeof window !== 'undefined') {
-      const history = await this.getAllAlerts();
-      const target = history.find(a => a.id === alert_id);
-      if (target && target.responders) {
-        const resp = target.responders.find(r => r.id === responder_id);
-        if (resp) {
-          resp.status = 'ON_SCENE';
-          resp.arrived_at = new Date().toISOString();
-          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-          this.notifyListeners(target, 'RESPONDER_ARRIVED');
+      try {
+        const history = await this.getAllAlerts();
+        const target = history.find(a => a.id === alert_id);
+        if (target && target.responders) {
+          const resp = target.responders.find(r => r.id === responder_id);
+          if (resp) {
+            resp.status = 'ON_SCENE';
+            resp.arrived_at = new Date().toISOString();
+            localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
+            this.notifyListeners(target, 'RESPONDER_ARRIVED');
+          }
         }
+      } catch (e) {
+        console.warn('Failed updating markOnScene locally:', e);
       }
     }
   }
@@ -283,15 +346,19 @@ export class EmergencyService {
     }
 
     if (typeof window !== 'undefined') {
-      const history = await this.getAllAlerts();
-      const target = history.find(a => a.id === params.alert_id);
-      if (target) {
-        target.status = finalStatus;
-        target.resolved_at = resolvedAt;
-        target.resolved_by_name = params.resolved_by_name;
-        target.resolution_notes = params.resolution_notes || 'Code cleared and resolved by team.';
-        localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-        this.notifyListeners(target, 'RESOLVED');
+      try {
+        const history = await this.getAllAlerts();
+        const target = history.find(a => a.id === params.alert_id);
+        if (target) {
+          target.status = finalStatus;
+          target.resolved_at = resolvedAt;
+          target.resolved_by_name = params.resolved_by_name;
+          target.resolution_notes = params.resolution_notes || 'Code cleared and resolved by team.';
+          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
+          this.notifyListeners(target, 'RESOLVED');
+        }
+      } catch (e) {
+        console.warn('Failed saving alert resolution locally:', e);
       }
     }
   }
