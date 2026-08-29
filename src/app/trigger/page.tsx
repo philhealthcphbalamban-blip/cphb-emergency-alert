@@ -341,6 +341,51 @@ function TriggerPadContent() {
                 Step 2: Emergency Ward & Bed Location
               </h2>
 
+              {/* 1-Tap Quick Ward Filter Buttons */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">
+                  1-Tap Quick Ward Select:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'All', key: 'ALL' },
+                    { label: '🚑 ER', key: 'ER' },
+                    { label: '🫀 ICU', key: 'ICU' },
+                    { label: '👶 NICU', key: 'NICU' },
+                    { label: '🩺 Ward 4 (Med)', key: 'WARD 4' },
+                    { label: '🤰 Ward 5 (OB)', key: 'WARD 5' },
+                    { label: '🧸 Ward 6 (Pedia)', key: 'WARD 6' },
+                    { label: '🩹 Ward 7 (Surg)', key: 'WARD 7' },
+                    { label: '😷 Ward 10 (Iso)', key: 'WARD 10' },
+                    { label: '🩸 Dialysis', key: 'Hemodialysis' },
+                    { label: '🔪 OR / DR', key: 'Operating' },
+                  ].map((w) => (
+                    <button
+                      key={w.key}
+                      type="button"
+                      onClick={() => {
+                        if (w.key === 'ALL') {
+                          setSelectedLocationIndex(0);
+                          setCustomRoom('');
+                        } else {
+                          const foundIdx = INITIAL_LOCATIONS.findIndex(l => 
+                            l.unit_ward.toLowerCase().includes(w.key.toLowerCase())
+                          );
+                          if (foundIdx !== -1) {
+                            setSelectedLocationIndex(foundIdx);
+                            setCustomRoom('');
+                            audioEngine.playChime();
+                          }
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 transition border border-slate-200"
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1.5">
                   Select Ward / Department (CPH Balamban)
@@ -350,11 +395,38 @@ function TriggerPadContent() {
                   onChange={(e) => handleLocationChange(Number(e.target.value))}
                   className="w-full rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 text-xs font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none shadow-inner"
                 >
-                  {INITIAL_LOCATIONS.map((loc, idx) => (
-                    <option key={loc.id} value={idx}>
-                      {loc.floor} • {loc.unit_ward} ({loc.room_bed})
-                    </option>
-                  ))}
+                  <optgroup label="📍 Ground Floor (ER, Dialysis, Isolation, OPD, Diagnostics)">
+                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Ground Floor').map((loc) => {
+                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                      return (
+                        <option key={loc.id} value={realIdx}>
+                          {loc.unit_ward} — {loc.room_bed}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+
+                  <optgroup label="📍 2nd Floor (ICU, Medical Ward 4, Surgical Ward 7, OR/PACU)">
+                    {INITIAL_LOCATIONS.filter(l => l.floor === '2nd Floor').map((loc) => {
+                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                      return (
+                        <option key={loc.id} value={realIdx}>
+                          {loc.unit_ward} — {loc.room_bed}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+
+                  <optgroup label="📍 3rd Floor (Ward 5 OB-GYN, Ward 6 Pediatric, NICU, Delivery Room)">
+                    {INITIAL_LOCATIONS.filter(l => l.floor === '3rd Floor').map((loc) => {
+                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                      return (
+                        <option key={loc.id} value={realIdx}>
+                          {loc.unit_ward} — {loc.room_bed}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
                 </select>
               </div>
 
