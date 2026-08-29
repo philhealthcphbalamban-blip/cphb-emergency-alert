@@ -21,9 +21,40 @@ function getSupabase() {
 // In-memory fallback
 let inMemoryPatientsCache: IHOMISPatient[] = [...MOCK_IHOMIS_PATIENTS];
 
+// Direct gateway polling helper (attempts to connect to https://ihomis-plus.cphb.local/)
+async function tryDirectIHOMISGatewaySync() {
+  const targetUrl = process.env.IHOMIS_GATEWAY_URL || 'https://ihomis-plus.cphb.local';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const res = await fetch(`${targetUrl}/Emergency/getLive`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch (e) {
+    // Gateway is internal/firewalled, use cloud database
+  }
+  return null;
+}
+
 // GET /api/ihomis/patients -> Fetches cloud synced patient census & live metrics
 export async function GET() {
   try {
+    // 1. Try Direct Hospital Gateway if reachable
+    const directLive = await tryDirectIHOMISGatewaySync();
+    if (directLive && directLive.length > 0) {
+      inMemoryPatientsCache = directLive;
+    }
+
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('emergency_audit_logs')
