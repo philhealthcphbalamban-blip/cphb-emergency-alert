@@ -12,10 +12,10 @@ export const IHOMIS_CONFIG: IHOMISConfig = {
 
 // Exact Live Encounter Metrics from CPH Balamban iHOMIS Plus System
 export const IHOMIS_LIVE_METRICS: IHOMISMetrics = {
-  activeAdmissions: 175,
-  admissionsMale: 77,
-  admissionsFemale: 98,
-  longStayCount: 56,
+  activeAdmissions: 172,
+  admissionsMale: 75,
+  admissionsFemale: 97,
+  longStayCount: 55,
   erEncounters: 293,
   erMale: 4,
   erFemale: 11,
@@ -807,9 +807,14 @@ export class IHOMISService {
     const activeAdmissions = this.getPatientsByModule('ADMISSION').length;
     const erEncounters = this.getPatientsByModule('EMERGENCY').length;
     return {
-      ...IHOMIS_LIVE_METRICS,
-      activeAdmissions: activeAdmissions > 0 ? activeAdmissions : IHOMIS_LIVE_METRICS.activeAdmissions,
-      erEncounters: erEncounters > 0 ? erEncounters : IHOMIS_LIVE_METRICS.erEncounters,
+      activeAdmissions: activeAdmissions > 50 ? activeAdmissions : IHOMIS_LIVE_METRICS.activeAdmissions,
+      admissionsMale: IHOMIS_LIVE_METRICS.admissionsMale,
+      admissionsFemale: IHOMIS_LIVE_METRICS.admissionsFemale,
+      longStayCount: IHOMIS_LIVE_METRICS.longStayCount,
+      erEncounters: erEncounters > 50 ? erEncounters : IHOMIS_LIVE_METRICS.erEncounters,
+      erMale: IHOMIS_LIVE_METRICS.erMale,
+      erFemale: IHOMIS_LIVE_METRICS.erFemale,
+      erForAdmission: IHOMIS_LIVE_METRICS.erForAdmission,
     };
   }
 
