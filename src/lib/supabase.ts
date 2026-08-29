@@ -4,8 +4,8 @@ import { IHOMISPatient } from '@/types/ihomis';
 import { EMERGENCY_CODES } from './constants';
 import { IHOMISService } from './ihomisService';
 
-const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
-const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vptgxwbsyccgamcuunya.supabase.co').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwdGd4d2JzeWNjZ2FtY3V1bnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NjYxMDAsImV4cCI6MjEwMzU0MjEwMH0.tj58oXqpJy-MT5AhZtmpigk7dWFwdTiDEs8R9QWj3FY').trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -34,6 +34,19 @@ export const supabase: SupabaseClient | null = createSafeSupabaseClient();
 // Multi-tab BroadcastChannel for zero-latency local realtime syncing & offline fallback
 const LOCAL_STORAGE_KEY_ALERTS = 'hospital_emergency_alerts_v1';
 const CHANNEL_NAME = 'hospital_realtime_alert_bus';
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {}
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 export class EmergencyService {
   private static channel: BroadcastChannel | null = null;
@@ -65,11 +78,11 @@ export class EmergencyService {
       console.warn('BroadcastChannel not supported or error:', e);
     }
 
-    // Also subscribe to Supabase Realtime if configured
+    // Subscribe to Supabase Realtime across all hospital computers & phones
     if (supabase) {
       try {
         supabase
-          .channel('public:emergency_alerts_realtime_broadcast')
+          .channel('public:emergency_alerts_global_realtime')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'emergency_alerts' },
@@ -84,13 +97,12 @@ export class EmergencyService {
       }
     }
 
-    // ⚡ Cross-Device Realtime Poller (Checks every 2.5s to ensure alerts pop up everywhere)
+    // High-frequency Realtime Poller (every 2.5 seconds)
+    // Guarantees alerts reach mobile phones and remote PCs even if WebSockets are asleep or backgrounded
     setInterval(async () => {
       try {
         const activeAlert = await this.getActiveAlert();
-        if (activeAlert) {
-          this.notifyListeners(activeAlert, 'POLL_SYNC');
-        }
+        this.notifyListeners(activeAlert, activeAlert ? 'POLL_SYNC' : 'RESOLVED');
       } catch (e) {
         // ignore
       }
@@ -121,7 +133,7 @@ export class EmergencyService {
     });
   }
 
-  // Get current active alert
+  // Get current active alert from Cloud database
   public static async getActiveAlert(): Promise<EmergencyAlert | null> {
     if (supabase) {
       try {
@@ -207,7 +219,7 @@ export class EmergencyService {
     return [];
   }
 
-  // Trigger a new emergency code with optional iHOMIS patient details
+  // Trigger a new emergency code with valid UUID
   public static async triggerAlert(params: {
     code_id: CodeId;
     location_text: string;
@@ -216,9 +228,10 @@ export class EmergencyService {
     patient_details?: IHOMISPatient | null;
   }): Promise<EmergencyAlert> {
     const patient = params.patient_details || IHOMISService.findPatientByLocation(params.location_text);
+    const alertUuid = generateUUID();
 
     const newAlert: EmergencyAlert = {
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'alert-' + Date.now(),
+      id: alertUuid,
       code_id: params.code_id,
       code_details: EMERGENCY_CODES[params.code_id] || EMERGENCY_CODES.code_blue,
       location_text: params.location_text,
@@ -232,8 +245,8 @@ export class EmergencyService {
 
     if (supabase) {
       try {
-        await supabase.from('emergency_alerts').insert({
-          id: newAlert.id,
+        const { error } = await supabase.from('emergency_alerts').insert({
+          id: alertUuid,
           code_id: newAlert.code_id,
           location_text: newAlert.location_text,
           status: newAlert.status,
@@ -243,8 +256,12 @@ export class EmergencyService {
           patient_id_optional: patient?.hrn || null,
           patient_details: patient || null,
         });
+
+        if (error) {
+          console.error('Failed inserting emergency_alerts to Supabase:', error);
+        }
       } catch (e) {
-        console.error('Failed inserting to Supabase:', e);
+        console.error('Exception inserting to Supabase:', e);
       }
     }
 
@@ -263,15 +280,17 @@ export class EmergencyService {
     return newAlert;
   }
 
-  // Acknowledge & add responder
+  // Acknowledge & add responder with valid UUID
   public static async addResponder(params: {
     alert_id: string;
     responder_name: string;
     role: AlertResponder['role'];
     eta_minutes: number;
   }): Promise<AlertResponder> {
+    const responderUuid = generateUUID();
+
     const newResponder: AlertResponder = {
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'resp-' + Date.now(),
+      id: responderUuid,
       alert_id: params.alert_id,
       responder_name: params.responder_name,
       role: params.role,
@@ -292,86 +311,83 @@ export class EmergencyService {
       }
     }
 
-    // Local save
-    if (typeof window !== 'undefined') {
-      try {
-        const history = await this.getAllAlerts();
-        const target = history.find(a => a.id === params.alert_id);
-        if (target) {
-          target.status = 'RESPONDING';
-          if (!target.acknowledged_at) target.acknowledged_at = new Date().toISOString();
-          if (!target.responders) target.responders = [];
-          target.responders.push(newResponder);
-          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-          this.notifyListeners(target, 'RESPONDER_ADDED');
-        }
-      } catch (e) {
-        console.warn('Failed saving responder locally:', e);
-      }
-    }
-
+    this.notifyListeners(await this.getActiveAlert(), 'RESPONDER_ADDED');
     return newResponder;
   }
 
-  // Mark Responder as Arrived On Scene
-  public static async markOnScene(alert_id: string, responder_id: string) {
-    if (typeof window !== 'undefined') {
+  // Mark responder arrived on scene
+  public static async markOnScene(alert_id: string, responder_id: string): Promise<void> {
+    const arrivedAt = new Date().toISOString();
+    if (supabase) {
       try {
-        const history = await this.getAllAlerts();
-        const target = history.find(a => a.id === alert_id);
-        if (target && target.responders) {
-          const resp = target.responders.find(r => r.id === responder_id);
-          if (resp) {
-            resp.status = 'ON_SCENE';
-            resp.arrived_at = new Date().toISOString();
-            localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-            this.notifyListeners(target, 'RESPONDER_ARRIVED');
-          }
-        }
+        await supabase
+          .from('alert_responders')
+          .update({ status: 'ON_SCENE', arrived_at: arrivedAt })
+          .eq('id', responder_id);
       } catch (e) {
-        console.warn('Failed updating markOnScene locally:', e);
+        console.error('Failed updating responder status in Supabase:', e);
       }
     }
+    this.notifyListeners(await this.getActiveAlert(), 'RESPONDER_ARRIVED');
   }
 
   // Resolve emergency code
   public static async resolveAlert(params: {
     alert_id: string;
     resolved_by_name: string;
-    resolution_notes?: string;
-    status?: AlertStatus;
-  }) {
+    resolution_notes: string;
+    status: AlertStatus;
+  }): Promise<void> {
     const resolvedAt = new Date().toISOString();
-    const finalStatus = params.status || 'RESOLVED';
 
     if (supabase) {
       try {
-        await supabase.from('emergency_alerts').update({
-          status: finalStatus,
-          resolved_at: resolvedAt,
-          resolved_by_name: params.resolved_by_name,
-          resolution_notes: params.resolution_notes || '',
-        }).eq('id', params.alert_id);
+        await supabase
+          .from('emergency_alerts')
+          .update({
+            status: params.status,
+            resolved_at: resolvedAt,
+            resolved_by_name: params.resolved_by_name,
+            resolution_notes: params.resolution_notes,
+          })
+          .eq('id', params.alert_id);
+
+        // Also log to audit logs
+        await supabase.from('emergency_audit_logs').insert({
+          alert_id: params.alert_id,
+          event_type: 'RESOLVED',
+          actor_name: params.resolved_by_name,
+          details: { notes: params.resolution_notes, resolved_at: resolvedAt },
+        });
       } catch (e) {
-        console.error('Failed updating alert resolution in Supabase:', e);
+        console.error('Failed resolving alert in Supabase:', e);
       }
     }
 
     if (typeof window !== 'undefined') {
       try {
-        const history = await this.getAllAlerts();
-        const target = history.find(a => a.id === params.alert_id);
-        if (target) {
-          target.status = finalStatus;
-          target.resolved_at = resolvedAt;
-          target.resolved_by_name = params.resolved_by_name;
-          target.resolution_notes = params.resolution_notes || 'Code cleared and resolved by team.';
-          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(history));
-          this.notifyListeners(target, 'RESOLVED');
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
+        if (raw) {
+          const alerts: EmergencyAlert[] = JSON.parse(raw);
+          const updated = alerts.map(a => {
+            if (a.id === params.alert_id) {
+              return {
+                ...a,
+                status: params.status,
+                resolved_at: resolvedAt,
+                resolved_by_name: params.resolved_by_name,
+                resolution_notes: params.resolution_notes,
+              };
+            }
+            return a;
+          });
+          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(updated));
         }
       } catch (e) {
-        console.warn('Failed saving alert resolution locally:', e);
+        console.warn('Failed resolving alert locally:', e);
       }
     }
+
+    this.notifyListeners(null, 'RESOLVED');
   }
 }
