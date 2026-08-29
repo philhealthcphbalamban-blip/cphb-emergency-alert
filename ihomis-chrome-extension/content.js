@@ -10,11 +10,16 @@ const VERCEL_API = 'https://cphb-emergency-alert.vercel.app/api/ihomis/patients'
 let lastSyncedSignature = '';
 
 function extractAndSyncEncounters() {
-  const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
-  if (tableRows.length === 0) return;
-
   const url = window.location.href.toLowerCase();
   const pageText = document.body.innerText.toLowerCase();
+
+  // Only run on iHOMIS or hospital pages
+  if (!url.includes('ihomis') && !url.includes('192.168.12') && !url.includes('localhost') && !pageText.includes('ihomis') && !pageText.includes('admission') && !pageText.includes('emergency')) {
+    return;
+  }
+
+  const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
+  if (tableRows.length === 0) return;
 
   const isER = url.includes('emergency') || pageText.includes('current emergency consultations') || pageText.includes('encounters');
   const isOPD = url.includes('outpatient') || pageText.includes('current outpatient consultations');

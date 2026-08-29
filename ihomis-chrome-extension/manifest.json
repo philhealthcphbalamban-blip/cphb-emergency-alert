@@ -8,11 +8,7 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://ihomis-plus.cphb.local/*",
-    "http://ihomis-plus.cphb.local/*",
-    "http://192.168.12.*/*",
-    "http://localhost/*",
-    "https://cphb-emergency-alert.vercel.app/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -20,10 +16,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://ihomis-plus.cphb.local/*",
-        "http://ihomis-plus.cphb.local/*",
-        "http://192.168.12.*/*",
-        "http://localhost/*"
+        "<all_urls>"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
