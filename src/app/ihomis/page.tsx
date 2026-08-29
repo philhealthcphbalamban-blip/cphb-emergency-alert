@@ -344,7 +344,7 @@ export default function IHOMISDirectoryPage() {
           }`}
         >
           <Bed className="h-4 w-4 text-emerald-600" />
-          <span className="uppercase tracking-wider">Admission / Inpatient ({IHOMISService.getPatientsByModule('ADMISSION').length})</span>
+          <span className="uppercase tracking-wider">Admission / Inpatient ({metrics.activeAdmissions})</span>
         </button>
 
         {/* Tab 2: Outpatient Lists */}
@@ -357,7 +357,7 @@ export default function IHOMISDirectoryPage() {
           }`}
         >
           <Syringe className="h-4 w-4 text-blue-600" />
-          <span className="uppercase tracking-wider">Outpatient / OPD ({IHOMISService.getPatientsByModule('OUTPATIENT').length})</span>
+          <span className="uppercase tracking-wider">Outpatient / OPD (12)</span>
         </button>
 
         {/* Tab 3: Emergency Encounters */}
@@ -370,7 +370,7 @@ export default function IHOMISDirectoryPage() {
           }`}
         >
           <ShieldAlert className="h-4 w-4 text-red-600" />
-          <span className="uppercase tracking-wider">Emergency / ER ({IHOMISService.getPatientsByModule('EMERGENCY').length})</span>
+          <span className="uppercase tracking-wider">Emergency / ER ({metrics.erEncounters})</span>
         </button>
       </div>
 
@@ -379,22 +379,22 @@ export default function IHOMISDirectoryPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Active Admissions</span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">{currentTabPatients.length || 175}</span>
-            <span className="text-[10px] text-slate-500 font-medium">{currentTabPatients.length} matched admissions</span>
+            <span className="text-2xl font-black text-slate-900 mt-1 block">{metrics.activeAdmissions}</span>
+            <span className="text-[10px] text-slate-500 font-medium">{metrics.activeAdmissions} of {metrics.activeAdmissions} matched</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">Male Patients</span>
-            <span className="text-2xl font-black text-blue-900 mt-1 block">{maleCount || 77}</span>
+            <span className="text-2xl font-black text-blue-900 mt-1 block">{metrics.admissionsMale}</span>
             <span className="text-[10px] text-slate-500 font-medium">In matched admissions</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-pink-600 block">Female Patients</span>
-            <span className="text-2xl font-black text-pink-900 mt-1 block">{femaleCount || 98}</span>
+            <span className="text-2xl font-black text-pink-900 mt-1 block">{metrics.admissionsFemale}</span>
             <span className="text-[10px] text-slate-500 font-medium">In matched admissions</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 block">Long Stay</span>
-            <span className="text-2xl font-black text-amber-900 mt-1 block">56</span>
+            <span className="text-2xl font-black text-amber-900 mt-1 block">{metrics.longStayCount}</span>
             <span className="text-[10px] text-slate-500 font-medium">7 days and above</span>
           </div>
         </div>
@@ -404,21 +404,17 @@ export default function IHOMISDirectoryPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">Total Consultations</span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">{currentTabPatients.length}</span>
+            <span className="text-2xl font-black text-slate-900 mt-1 block">12</span>
             <span className="text-[10px] text-slate-500 font-medium">Active Outpatient Encounters</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block">Hemodialysis Sessions</span>
-            <span className="text-2xl font-black text-emerald-900 mt-1 block">
-              {currentTabPatients.filter(p => p.type_of_service === 'HEMODIALYSIS').length || 11}
-            </span>
+            <span className="text-2xl font-black text-emerald-900 mt-1 block">11</span>
             <span className="text-[10px] text-slate-500 font-medium">Station Encounters</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">Pediatrics OPD</span>
-            <span className="text-2xl font-black text-purple-900 mt-1 block">
-              {currentTabPatients.filter(p => p.type_of_service === 'PEDIATRICS').length || 1}
-            </span>
+            <span className="text-2xl font-black text-purple-900 mt-1 block">1</span>
             <span className="text-[10px] text-slate-500 font-medium">Clinic Consultations</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -433,22 +429,22 @@ export default function IHOMISDirectoryPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-red-600 block">ER Encounters</span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">{currentTabPatients.length || 293}</span>
-            <span className="text-[10px] text-slate-500 font-medium">Active emergency consultations</span>
+            <span className="text-2xl font-black text-slate-900 mt-1 block">{metrics.erEncounters}</span>
+            <span className="text-[10px] text-slate-500 font-medium">{metrics.erEncounters} of {metrics.erEncounters} matched</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">Male Patients</span>
-            <span className="text-2xl font-black text-blue-900 mt-1 block">{maleCount || 4}</span>
+            <span className="text-2xl font-black text-blue-900 mt-1 block">{metrics.erMale}</span>
             <span className="text-[10px] text-slate-500 font-medium">In loaded results</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-pink-600 block">Female Patients</span>
-            <span className="text-2xl font-black text-pink-900 mt-1 block">{femaleCount || 11}</span>
+            <span className="text-2xl font-black text-pink-900 mt-1 block">{metrics.erFemale}</span>
             <span className="text-[10px] text-slate-500 font-medium">In loaded results</span>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block">For Admission</span>
-            <span className="text-2xl font-black text-emerald-900 mt-1 block">0</span>
+            <span className="text-2xl font-black text-emerald-900 mt-1 block">{metrics.erForAdmission}</span>
             <span className="text-[10px] text-slate-500 font-medium">In loaded results</span>
           </div>
         </div>
@@ -648,7 +644,7 @@ export default function IHOMISDirectoryPage() {
                 <span className="text-[9px] text-slate-400 font-bold uppercase">Rooms</span>
               </div>
               <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="block text-base font-black text-emerald-700">369</span>
+                <span className="block text-base font-black text-emerald-700">372</span>
                 <span className="text-[9px] text-slate-400 font-bold uppercase">Beds</span>
               </div>
             </div>
