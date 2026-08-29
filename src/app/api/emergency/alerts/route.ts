@@ -82,37 +82,33 @@ export async function GET(req: NextRequest) {
       query = query.eq('hospital_id', hospitalId);
     }
 
-    const { data, error } = await query.limit(1).maybeSingle();
+    const { data, error } = await query;
 
-    if (error) {
-      console.warn('GET /api/emergency/alerts fallback from Supabase error:', error);
-      return NextResponse.json({
-        success: true,
-        activeAlert: inMemoryActiveAlertsByHosp[hospitalId] || null,
-        fallback: true,
-      });
-    }
-
-    let activeAlert: EmergencyAlert | null = null;
-    if (data) {
-      activeAlert = {
-        ...data,
-        code_details: EMERGENCY_CODES[data.code_id] || EMERGENCY_CODES.code_blue,
-        patient_details: data.patient_details || null,
-      };
-      inMemoryActiveAlertsByHosp[hospitalId] = activeAlert;
+    let activeAlerts: EmergencyAlert[] = [];
+    if (!error && data && data.length > 0) {
+      activeAlerts = data.map(d => ({
+        ...d,
+        code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
+        patient_details: d.patient_details || null,
+      }));
     } else {
-      inMemoryActiveAlertsByHosp[hospitalId] = null;
+      activeAlerts = inMemoryAlertHistory.filter(
+        a => (a.hospital_id || 'cphb') === hospitalId && (a.status === 'ACTIVE' || a.status === 'RESPONDING')
+      );
     }
+
+    inMemoryActiveAlertsByHosp[hospitalId] = activeAlerts[0] || null;
 
     return NextResponse.json({
       success: true,
-      activeAlert,
+      activeAlert: activeAlerts[0] || null,
+      activeAlerts,
+      count: activeAlerts.length,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
     console.error('Error in GET /api/emergency/alerts:', err);
-    return NextResponse.json({ success: true, activeAlert: null, alerts: [], fallback: true });
+    return NextResponse.json({ success: true, activeAlert: null, activeAlerts: [], alerts: [], fallback: true });
   }
 }
 

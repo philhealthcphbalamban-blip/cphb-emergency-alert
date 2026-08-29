@@ -16,99 +16,131 @@ import {
   Minimize2,
   HeartPulse,
   Building,
-  Calendar
+  Calendar,
+  Layers
 } from 'lucide-react';
 import { EmergencyAlert, AlertResponder } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
 import { audioEngine } from '@/lib/audioEngine';
-import { IHOMISPatientCard } from '@/components/IHOMISPatientCard';
+import { HospitalService } from '@/lib/hospitalService';
+import { StaffService } from '@/lib/staffService';
 
 export default function MonitorPage() {
-  const [activeAlert, setActiveAlert] = useState<EmergencyAlert | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
+  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
+  const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [resolveDialogOpen, setResolveDialogOpen] = useState<boolean>(false);
+  
+  // Resolve modal state
+  const [resolvingAlert, setResolvingAlert] = useState<EmergencyAlert | null>(null);
   const [resolveNotes, setResolveNotes] = useState<string>('Code cleared. Patient stabilized.');
   const [resolverName, setResolverName] = useState<string>('Dr. Santos, MD (Team Lead)');
 
   const ttsIntervalRef = useRef<any>(null);
 
-  // Initialize Realtime subscription & WakeLock
+  const fetchActiveAlerts = async () => {
+    const list = await EmergencyService.getActiveAlerts(activeHospital.id);
+    setActiveAlerts(list);
+    if (list.length > 0) {
+      handleAlertsSoundAndSpeech(list);
+    } else {
+      stopAllAudio();
+    }
+  };
+
   useEffect(() => {
     EmergencyService.init();
 
     // Request Screen Wake Lock for continuous Kiosk display
     if ('wakeLock' in navigator) {
-      (navigator as any).wakeLock.request('screen').catch((err: any) => {
-        console.log('Screen Wake Lock request ignored/not supported:', err);
-      });
+      (navigator as any).wakeLock.request('screen').catch(() => {});
     }
 
-    EmergencyService.getActiveAlert().then((alert) => {
-      setActiveAlert(alert);
-      if (alert) handleAlertActivated(alert);
+    const currentStaff = StaffService.getCurrentStaff();
+    if (currentStaff) {
+      setResolverName(`${currentStaff.name} (${currentStaff.role})`);
+    }
+
+    fetchActiveAlerts();
+
+    const handleHospChange = (e: any) => {
+      if (e.detail) {
+        setActiveHospital(e.detail);
+      }
+    };
+    window.addEventListener('cph_hospital_changed', handleHospChange);
+
+    const unsubscribe = EmergencyService.subscribe(() => {
+      fetchActiveAlerts();
     });
 
-    const unsubscribe = EmergencyService.subscribe((alert, eventType) => {
-      if (eventType === 'RESOLVED') {
-        stopAllAudio();
-        setActiveAlert(null);
-      } else if (alert && (alert.status === 'ACTIVE' || alert.status === 'RESPONDING')) {
-        setActiveAlert(alert);
-        if (eventType === 'TRIGGERED') {
-          handleAlertActivated(alert);
-        }
-      }
-    });
+    const pollInterval = setInterval(() => {
+      fetchActiveAlerts();
+    }, 2500);
 
     return () => {
       unsubscribe();
+      clearInterval(pollInterval);
+      window.removeEventListener('cph_hospital_changed', handleHospChange);
       stopAllAudio();
     };
-  }, []);
+  }, [activeHospital.id]);
 
-  // Elapsed time counter
+  // Elapsed time counters for all active alerts
   useEffect(() => {
-    if (!activeAlert) {
-      setElapsedSeconds(0);
+    if (activeAlerts.length === 0) {
+      setElapsedTimes({});
       return;
     }
 
-    const start = new Date(activeAlert.triggered_at).getTime();
-    const updateElapsed = () => {
+    const updateTimers = () => {
       const now = Date.now();
-      setElapsedSeconds(Math.max(0, Math.floor((now - start) / 1000)));
+      const updated: Record<string, number> = {};
+      activeAlerts.forEach((alert) => {
+        const start = new Date(alert.triggered_at).getTime();
+        updated[alert.id] = Math.max(0, Math.floor((now - start) / 1000));
+      });
+      setElapsedTimes(updated);
     };
 
-    updateElapsed();
-    const timer = setInterval(updateElapsed, 1000);
+    updateTimers();
+    const timer = setInterval(updateTimers, 1000);
     return () => clearInterval(timer);
-  }, [activeAlert]);
+  }, [activeAlerts]);
 
-  const handleAlertActivated = (alert: EmergencyAlert) => {
+  const handleAlertsSoundAndSpeech = (alerts: EmergencyAlert[]) => {
+    if (alerts.length === 0) return;
+
     if (soundEnabled) {
-      audioEngine.startSiren(alert.code_details?.siren_pattern || 'hi_lo');
+      const priorityAlert = alerts[0];
+      audioEngine.startSiren(priorityAlert.code_details?.siren_pattern || 'hi_lo');
     }
-    
-    // Announce voice alert
-    speakAlertAnnouncement(alert);
 
-    // Repeat voice announcement every 18 seconds
+    // Announce voice alerts
+    speakAllAlerts(alerts);
+
+    // Repeat voice announcement every 15 seconds
     if (ttsIntervalRef.current) clearInterval(ttsIntervalRef.current);
     ttsIntervalRef.current = setInterval(() => {
       if (ttsEnabled) {
-        speakAlertAnnouncement(alert);
+        speakAllAlerts(alerts);
       }
-    }, 18000);
+    }, 15000);
   };
 
-  const speakAlertAnnouncement = (alert: EmergencyAlert) => {
-    const loc = alert.location_text;
-    const template = alert.code_details?.tts_template || 'Attention: Emergency code at {location}.';
-    const text = template.replace('{location}', loc);
-    audioEngine.speak(text);
+  const speakAllAlerts = (alerts: EmergencyAlert[]) => {
+    if (alerts.length === 0) return;
+    if (alerts.length === 1) {
+      const a = alerts[0];
+      const template = a.code_details?.tts_template || 'Attention: Emergency code at {location}.';
+      audioEngine.speak(template.replace('{location}', a.location_text));
+    } else {
+      const parts = alerts.map((a) => `${a.code_details?.code_name} at ${a.location_text}`);
+      const combined = `Attention all medical personnel: Multiple concurrent codes active. ${parts.join('. Also active, ')}.`;
+      audioEngine.speak(combined);
+    }
   };
 
   const stopAllAudio = () => {
@@ -126,8 +158,8 @@ export default function MonitorPage() {
       setSoundEnabled(false);
     } else {
       setSoundEnabled(true);
-      if (activeAlert) {
-        audioEngine.startSiren(activeAlert.code_details?.siren_pattern || 'hi_lo');
+      if (activeAlerts.length > 0) {
+        audioEngine.startSiren(activeAlerts[0].code_details?.siren_pattern || 'hi_lo');
       }
     }
   };
@@ -138,8 +170,8 @@ export default function MonitorPage() {
       setTtsEnabled(false);
     } else {
       setTtsEnabled(true);
-      if (activeAlert) {
-        speakAlertAnnouncement(activeAlert);
+      if (activeAlerts.length > 0) {
+        speakAllAlerts(activeAlerts);
       }
     }
   };
@@ -153,29 +185,28 @@ export default function MonitorPage() {
   };
 
   const handleConfirmResolve = async () => {
-    if (!activeAlert) return;
-    stopAllAudio();
+    if (!resolvingAlert) return;
+    
     await EmergencyService.resolveAlert({
-      alert_id: activeAlert.id,
+      alert_id: resolvingAlert.id,
       resolved_by_name: resolverName,
       resolution_notes: resolveNotes,
       status: 'RESOLVED',
     });
-    setResolveDialogOpen(false);
+
+    setResolvingAlert(null);
+    await fetchActiveAlerts();
   };
 
-  const formatElapsed = (sec: number) => {
+  const formatElapsed = (sec: number | undefined) => {
+    if (sec === undefined) return '00:00';
     const mins = Math.floor(sec / 60);
     const remainingSec = sec % 60;
     return `${mins.toString().padStart(2, '0')}:${remainingSec.toString().padStart(2, '0')}`;
   };
 
-  const code = activeAlert?.code_details;
-  const isCodeBlue = activeAlert?.code_id === 'code_blue' || activeAlert?.code_id === 'code_baby_blue';
-  const patient = activeAlert?.patient_details;
-
   return (
-    <div className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 space-y-6">
+    <div className="min-h-[calc(100vh-4rem)] p-3 sm:p-6 space-y-4 sm:space-y-6">
       
       {/* Top Kiosk Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -184,11 +215,19 @@ export default function MonitorPage() {
             <Tv className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-base font-black uppercase tracking-wider text-slate-900">
-              Central Hospital Monitor Kiosk (CPH Balamban)
-            </h1>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-base font-black uppercase tracking-wider text-slate-900">
+                Central Monitor Kiosk — {activeHospital.name}
+              </h1>
+              {activeAlerts.length > 1 && (
+                <span className="bg-red-600 text-white px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center space-x-1">
+                  <Layers className="h-3 w-3 inline mr-1" />
+                  {activeAlerts.length} Active Codes (Split View)
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
-              High-Visibility Wall Display • Audio Alarm Engine Active • iHOMIS LAN Sync
+              High-Visibility Screen • Multi-Code Concurrent Broadcast Engine • 24/7 LAN Sync
             </p>
           </div>
         </div>
@@ -219,7 +258,7 @@ export default function MonitorPage() {
             }`}
           >
             {ttsEnabled ? <Mic className="h-4 w-4 text-blue-600" /> : <MicOff className="h-4 w-4" />}
-            <span>TTS Voice: {ttsEnabled ? 'ON' : 'MUTED'}</span>
+            <span>Voice: {ttsEnabled ? 'ON' : 'MUTED'}</span>
           </button>
 
           {/* Fullscreen Button */}
@@ -234,163 +273,272 @@ export default function MonitorPage() {
       </div>
 
       {/* Main Content Area */}
-      {activeAlert ? (
-        <div className="space-y-6">
-          
-          {/* HIGH VISIBILITY EMERGENCY CODE BANNER */}
-          <div className={`relative overflow-hidden rounded-3xl border-4 p-8 sm:p-10 shadow-2xl text-center text-white ${
-            isCodeBlue
-              ? 'border-blue-400 bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 shadow-blue-500/50 radar-pulse-blue'
-              : 'border-red-500 bg-gradient-to-br from-red-600 via-red-700 to-rose-900 shadow-red-500/50 radar-pulse-red'
-          }`}>
-            
-            {/* Top Status Header */}
-            <div className="inline-flex items-center space-x-2 bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/30 text-xs sm:text-sm font-black uppercase tracking-widest text-amber-300 mb-3">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-400 animate-ping mr-1" />
-              <span>ACTIVE EMERGENCY BROADCAST IN PROGRESS</span>
-            </div>
+      {activeAlerts.length > 0 ? (
+        activeAlerts.length === 1 ? (
+          /* SINGLE HIGH VISIBILITY CODE BANNER */
+          (() => {
+            const singleAlert = activeAlerts[0];
+            const code = singleAlert.code_details;
+            const isCodeBlue = singleAlert.code_id === 'code_blue' || singleAlert.code_id === 'code_baby_blue';
+            const elapsed = elapsedTimes[singleAlert.id];
 
-            {/* Huge Code Name */}
-            <h2 className="text-5xl sm:text-8xl font-black text-white uppercase tracking-tight drop-shadow-md">
-              {code?.code_name}
-            </h2>
+            return (
+              <div className="space-y-6 animate-fade-in">
+                
+                {/* HIGH VISIBILITY EMERGENCY CODE BANNER */}
+                <div className={`relative overflow-hidden rounded-3xl border-4 p-8 sm:p-10 shadow-2xl text-center text-white ${
+                  isCodeBlue
+                    ? 'border-blue-400 bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 shadow-blue-500/50 radar-pulse-blue'
+                    : 'border-red-500 bg-gradient-to-br from-red-600 via-red-700 to-rose-900 shadow-red-500/50 radar-pulse-red'
+                }`}>
+                  
+                  {/* Top Status Header */}
+                  <div className="inline-flex items-center space-x-2 bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/30 text-xs sm:text-sm font-black uppercase tracking-widest text-amber-300 mb-3">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-400 animate-ping mr-1" />
+                    <span>ACTIVE EMERGENCY BROADCAST IN PROGRESS</span>
+                  </div>
 
-            <p className="text-xl sm:text-3xl font-black text-slate-100 mt-1 tracking-wide drop-shadow-sm">
-              {code?.title}
-            </p>
+                  {/* Huge Code Name */}
+                  <h2 className="text-5xl sm:text-8xl font-black text-white uppercase tracking-tight drop-shadow-md">
+                    {code?.code_name}
+                  </h2>
 
-            {/* Giant Location Card */}
-            <div className="mt-6 mx-auto max-w-3xl rounded-2xl bg-white text-slate-900 border-4 border-amber-400 p-4 sm:p-6 shadow-2xl">
-              <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-amber-700 block mb-1">
-                DISPATCH LOCATION
-              </span>
-              <p className="text-2xl sm:text-5xl font-black text-slate-900 tracking-tight flex items-center justify-center">
-                <MapPin className="h-8 w-8 text-red-600 mr-2 shrink-0 animate-bounce" />
-                {activeAlert.location_text}
-              </p>
-            </div>
+                  <p className="text-xl sm:text-3xl font-black text-slate-100 mt-1 tracking-wide drop-shadow-sm">
+                    {code?.title}
+                  </p>
 
-            {/* Elapsed Time & Triggered By */}
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-sm font-bold">
-              <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/20 flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-amber-300 animate-spin" />
-                <span className="text-slate-200">Elapsed Time:</span>
-                <span className="font-mono text-xl text-amber-300 font-black">{formatElapsed(elapsedSeconds)}</span>
-              </div>
-              <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/20 text-slate-200">
-                Triggered By: <span className="text-white font-bold">{activeAlert.triggered_by_name} ({activeAlert.triggered_by_role})</span>
-              </div>
-            </div>
+                  {/* Giant Location Card */}
+                  <div className="mt-6 mx-auto max-w-3xl rounded-2xl bg-white text-slate-900 border-4 border-amber-400 p-4 sm:p-6 shadow-2xl">
+                    <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-amber-700 block mb-1">
+                      DISPATCH LOCATION
+                    </span>
+                    <p className="text-2xl sm:text-5xl font-black text-slate-900 tracking-tight flex items-center justify-center">
+                      <MapPin className="h-8 w-8 text-red-600 mr-2 shrink-0 animate-bounce" />
+                      {singleAlert.location_text}
+                    </p>
+                  </div>
 
-          </div>
+                  {/* Elapsed Time & Triggered By */}
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-sm font-bold">
+                    <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/20 flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-amber-300 animate-spin" />
+                      <span className="text-slate-200">Elapsed Time:</span>
+                      <span className="font-mono text-xl text-amber-300 font-black">{formatElapsed(elapsed)}</span>
+                    </div>
+                    <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/20 text-slate-200">
+                      Triggered By: <span className="text-white font-bold">{singleAlert.triggered_by_name} ({singleAlert.triggered_by_role})</span>
+                    </div>
+                  </div>
 
-          {/* RESPONDERS DISPATCH BOARD & LIVE ACTIONS */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* Responders List (8 cols) */}
-            <div className="lg:col-span-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <Users className="h-5 w-5 text-emerald-600" />
-                  <h3 className="text-base font-black text-slate-900">
-                    Code Team Responders ({activeAlert.responders?.length || 0})
-                  </h3>
                 </div>
-                <span className="text-xs font-semibold text-slate-500">Live Status Tracking</span>
-              </div>
 
-              {activeAlert.responders && activeAlert.responders.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {activeAlert.responders.map((resp) => {
-                    const isOnScene = resp.status === 'ON_SCENE';
-                    return (
-                      <div
-                        key={resp.id}
-                        className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${
-                          isOnScene
-                            ? 'bg-emerald-50 border-emerald-300'
-                            : 'bg-slate-50 border-slate-200'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center space-x-1.5">
-                            <span className="text-sm font-black text-slate-900">
-                              {resp.responder_name}
-                            </span>
-                          </div>
-                          <p className="text-xs font-bold text-slate-600">
-                            {resp.role}
-                          </p>
-                        </div>
-
-                        <div className="text-right">
-                          {isOnScene ? (
-                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 border border-emerald-300 flex items-center">
-                              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                              ON SCENE
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800 border border-amber-300">
-                              ETA ~{resp.eta_minutes} min
-                            </span>
-                          )}
-                        </div>
+                {/* RESPONDERS DISPATCH BOARD & LIVE ACTIONS */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  
+                  {/* Responders List (8 cols) */}
+                  <div className="lg:col-span-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-2">
+                        <Users className="h-5 w-5 text-emerald-600" />
+                        <h3 className="text-base font-black text-slate-900">
+                          Code Team Responders ({singleAlert.responders?.length || 0})
+                        </h3>
                       </div>
-                    );
-                  })}
+                      <span className="text-xs font-semibold text-slate-500">Live Status Tracking</span>
+                    </div>
+
+                    {singleAlert.responders && singleAlert.responders.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {singleAlert.responders.map((resp) => {
+                          const isOnScene = resp.status === 'ON_SCENE';
+                          return (
+                            <div
+                              key={resp.id}
+                              className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${
+                                isOnScene
+                                  ? 'bg-emerald-50 border-emerald-300'
+                                  : 'bg-slate-50 border-slate-200'
+                              }`}
+                            >
+                              <div>
+                                <span className="text-sm font-black text-slate-900">
+                                  {resp.responder_name}
+                                </span>
+                                <p className="text-xs font-bold text-slate-600">
+                                  {resp.role}
+                                </p>
+                              </div>
+
+                              <div className="text-right">
+                                {isOnScene ? (
+                                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 border border-emerald-300 flex items-center">
+                                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                    ON SCENE
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800 border border-amber-300">
+                                    ETA ~{resp.eta_minutes} min
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 rounded-xl bg-slate-50 border border-dashed border-slate-200">
+                        <Users className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-slate-700">
+                          Awaiting First Responder Acknowledgment...
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          On-call physicians and code team are receiving push alerts.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stand Down Actions (4 cols) */}
+                  <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 mb-1">
+                        Code Control Station
+                      </h3>
+                      <p className="text-xs text-slate-500 mb-5">
+                        Authorize resolution or stand down once patient resuscitation is complete.
+                      </p>
+
+                      <div className="space-y-3">
+                        <button
+                          onClick={() => setResolvingAlert(singleAlert)}
+                          className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-emerald-600/30 transition flex items-center justify-center space-x-2"
+                        >
+                          <CheckCircle2 className="h-5 w-5" />
+                          <span>Clear & Resolve Code</span>
+                        </button>
+
+                        <button
+                          onClick={stopAllAudio}
+                          className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition"
+                        >
+                          Mute Alarm Sirens Temporarily
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] text-slate-400 text-center font-semibold">
+                      Hospital Protocol Compliant • All Actions Time-Stamped
+                    </div>
+                  </div>
+
                 </div>
-              ) : (
-                <div className="text-center py-10 rounded-xl bg-slate-50 border border-dashed border-slate-200">
-                  <Users className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm font-bold text-slate-700">
-                    Awaiting First Responder Acknowledgment...
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    On-call physicians and code team are receiving alerts.
-                  </p>
-                </div>
-              )}
+
+              </div>
+            );
+          })()
+        ) : (
+          /* MULTI-CODE SPLIT SCREEN GRID (2 OR MORE ACTIVE CODES) */
+          <div className="space-y-4 animate-fade-in">
+            <div className="p-3 bg-red-600 text-white rounded-2xl flex items-center justify-between font-black text-xs uppercase tracking-wider shadow-md">
+              <span className="flex items-center space-x-2">
+                <ShieldAlert className="h-4 w-4 animate-bounce" />
+                <span>MULTIPLE CONCURRENT EMERGENCY CODES IN PROGRESS ({activeAlerts.length} ACTIVE)</span>
+              </span>
+              <span className="text-[11px] bg-red-800 px-3 py-1 rounded-lg">Split Screen Dispatch Mode</span>
             </div>
 
-            {/* Stand Down Actions (4 cols) */}
-            <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
-              <div>
-                <h3 className="text-base font-black text-slate-900 mb-1">
-                  Code Control Station
-                </h3>
-                <p className="text-xs text-slate-500 mb-5">
-                  Authorize resolution or stand down once patient resuscitation is complete.
-                </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {activeAlerts.map((alert, idx) => {
+                const code = alert.code_details;
+                const isCodeBlue = alert.code_id === 'code_blue' || alert.code_id === 'code_baby_blue';
+                const elapsed = elapsedTimes[alert.id];
 
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setResolveDialogOpen(true)}
-                    className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-emerald-600/30 transition flex items-center justify-center space-x-2"
+                return (
+                  <div 
+                    key={alert.id}
+                    className="rounded-3xl border-4 bg-white overflow-hidden shadow-2xl flex flex-col justify-between"
+                    style={{ borderColor: code?.color_hex || '#2563eb' }}
                   >
-                    <CheckCircle2 className="h-5 w-5" />
-                    <span>Clear & Resolve Code</span>
-                  </button>
+                    {/* Header Banner */}
+                    <div 
+                      className="p-6 text-white text-center shadow-md relative"
+                      style={{ backgroundColor: code?.color_hex || '#2563eb' }}
+                    >
+                      <div className="inline-flex items-center space-x-1.5 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-amber-300 mb-2">
+                        <span className="h-2 w-2 rounded-full bg-red-400 animate-ping mr-1" />
+                        <span>ACTIVE EMERGENCY #{idx + 1}</span>
+                      </div>
 
-                  <button
-                    onClick={() => {
-                      audioEngine.stopSiren();
-                      audioEngine.stopSpeech();
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition"
-                  >
-                    Mute Alarm Sirens Temporarily
-                  </button>
-                </div>
-              </div>
+                      <h2 className="text-4xl sm:text-5xl font-black uppercase tracking-tight drop-shadow-md">
+                        {code?.code_name}
+                      </h2>
+                      <p className="text-base sm:text-lg font-extrabold text-white/90 mt-0.5">
+                        {code?.title}
+                      </p>
 
-              <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] text-slate-400 text-center font-semibold">
-                Hospital Protocol Compliant • All Actions Time-Stamped
-              </div>
+                      {/* Location Box */}
+                      <div className="mt-4 rounded-xl bg-white text-slate-900 p-3.5 shadow-md border-2 border-amber-400">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block">
+                          DISPATCH LOCATION
+                        </span>
+                        <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight flex items-center justify-center mt-0.5">
+                          <MapPin className="h-5 w-5 text-red-600 mr-1.5 shrink-0 animate-bounce" />
+                          {alert.location_text}
+                        </p>
+                      </div>
+
+                      {/* Timer */}
+                      <div className="mt-3 flex items-center justify-center space-x-2 text-xs font-bold bg-black/30 py-1.5 px-3 rounded-lg w-fit mx-auto">
+                        <Clock className="h-3.5 w-3.5 text-amber-300 animate-spin" />
+                        <span>Elapsed Time:</span>
+                        <span className="font-mono text-base font-black text-amber-300">{formatElapsed(elapsed)}</span>
+                      </div>
+                    </div>
+
+                    {/* Responders & Control */}
+                    <div className="p-5 space-y-4 bg-slate-50 flex-1 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center">
+                            <Users className="h-3.5 w-3.5 mr-1 text-blue-600" />
+                            Responders ({alert.responders?.length || 0})
+                          </h4>
+                          <span className="text-[10px] font-bold text-slate-400">Live Team</span>
+                        </div>
+
+                        {alert.responders && alert.responders.length > 0 ? (
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            {alert.responders.map((r) => (
+                              <div key={r.id} className="p-2 rounded-lg bg-white border border-slate-200 flex items-center justify-between text-xs font-bold">
+                                <span>{r.responder_name} <span className="text-[10px] text-slate-500 font-normal">({r.role})</span></span>
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                  {r.status === 'ON_SCENE' ? 'ON SCENE' : `ETA ~${r.eta_minutes}m`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 rounded-xl bg-white border border-dashed border-slate-200 text-xs text-slate-500 font-bold">
+                            Awaiting Responders...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Stand down button for this specific alert */}
+                      <button
+                        onClick={() => setResolvingAlert(alert)}
+                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Clear / Resolve {code?.code_name}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-
           </div>
-
-        </div>
+        )
       ) : (
         /* Standby / Idle Monitor Screen */
         <div className="text-center py-20 px-6 rounded-3xl bg-white border border-slate-200 shadow-sm my-6">
@@ -401,16 +549,16 @@ export default function MonitorPage() {
             CENTRAL MONITOR STANDBY
           </h2>
           <p className="text-base text-emerald-700 font-bold mt-1.5">
-            System Online & Listening to Realtime Dispatch
+            System Online & Listening to Realtime Dispatch ({activeHospital.name})
           </p>
           <p className="text-xs text-slate-500 max-w-md mx-auto mt-2">
-            When a Nurse or Doctor triggers a Code Blue, Baby Blue, or Code Red, this screen will immediately flash and broadcast sirens with automated voice directions and iHOMIS Plus patient data.
+            When a Nurse or Doctor triggers a Code Blue, Baby Blue, or Code Red, this screen will immediately flash and broadcast sirens with automated voice directions. Multiple simultaneous codes will automatically activate Split-Screen mode!
           </p>
         </div>
       )}
 
       {/* RESOLVE DIALOG MODAL */}
-      {resolveDialogOpen && (
+      {resolvingAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
             <div className="flex items-center space-x-3">
@@ -418,8 +566,12 @@ export default function MonitorPage() {
                 <CheckCircle2 className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">Resolve Emergency Code</h3>
-                <p className="text-xs text-slate-500">Mark incident as completed & log resolution</p>
+                <h3 className="text-lg font-black text-slate-900">
+                  Resolve {resolvingAlert.code_details?.code_name}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Location: {resolvingAlert.location_text}
+                </p>
               </div>
             </div>
 
@@ -448,18 +600,21 @@ export default function MonitorPage() {
               />
             </div>
 
-            <div className="flex items-center space-x-3 pt-2">
+            <div className="flex items-center space-x-2 pt-2">
               <button
-                onClick={() => setResolveDialogOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200 transition"
+                type="button"
+                onClick={() => setResolvingAlert(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleConfirmResolve}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition"
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-md transition flex items-center justify-center space-x-1.5"
               >
-                Confirm Stand Down
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Confirm Stand Down</span>
               </button>
             </div>
           </div>

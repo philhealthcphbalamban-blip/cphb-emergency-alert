@@ -141,18 +141,18 @@ export class EmergencyService {
     });
   }
 
-  public static async getActiveAlert(hospitalId?: string): Promise<EmergencyAlert | null> {
+  public static async getActiveAlerts(hospitalId?: string): Promise<EmergencyAlert[]> {
     const hid = hospitalId || HospitalService.getActiveHospital().id;
 
     try {
       const res = await fetch(`/api/emergency/alerts?hospital_id=${hid}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.activeAlert) {
-          return json.activeAlert;
+        if (json.success && Array.isArray(json.activeAlerts)) {
+          return json.activeAlerts;
         }
-        if (json.success && json.activeAlert === null) {
-          return null;
+        if (json.success && json.activeAlert) {
+          return [json.activeAlert];
         }
       }
     } catch (e) {
@@ -173,22 +173,26 @@ export class EmergencyService {
           query = query.eq('hospital_id', hid);
         }
 
-        const { data, error } = await query.limit(1).maybeSingle();
+        const { data, error } = await query;
 
-        if (data && !error) {
-          const patient = data.patient_details || IHOMISService.findPatientByLocation(data.location_text);
-          return {
-            ...data,
-            code_details: EMERGENCY_CODES[data.code_id] || EMERGENCY_CODES.code_blue,
-            patient_details: patient,
-          };
+        if (data && !error && data.length > 0) {
+          return data.map(d => ({
+            ...d,
+            code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
+            patient_details: d.patient_details || null,
+          }));
         }
       } catch (e) {
-        console.warn('Supabase fetch failed:', e);
+        console.warn('Supabase fetch active alerts failed:', e);
       }
     }
 
-    return null;
+    return [];
+  }
+
+  public static async getActiveAlert(hospitalId?: string): Promise<EmergencyAlert | null> {
+    const list = await this.getActiveAlerts(hospitalId);
+    return list.length > 0 ? list[0] : null;
   }
 
   public static async getAllAlerts(hospitalId?: string): Promise<EmergencyAlert[]> {

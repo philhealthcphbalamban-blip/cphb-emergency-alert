@@ -1,74 +1,69 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   ShieldAlert, 
   Tv, 
   Smartphone, 
   History, 
-  Activity, 
-  HeartPulse, 
-  Flame, 
-  Baby, 
-  CheckCircle2, 
   Users, 
-  Clock, 
-  ArrowRight, 
-  Zap, 
   Building, 
-  MapPin, 
+  Clock, 
+  CheckCircle2, 
+  ExternalLink,
+  Zap,
+  Activity,
+  HeartPulse,
+  Baby,
   Bed,
-  Monitor
+  MapPin,
+  Monitor,
+  Flame,
+  Layers
 } from 'lucide-react';
 import { EmergencyAlert } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
-import { EMERGENCY_CODES } from '@/lib/constants';
-import { IHOMISService } from '@/lib/ihomisService';
 import { HospitalService } from '@/lib/hospitalService';
+import { IHOMISService } from '@/lib/ihomisService';
 import { audioEngine } from '@/lib/audioEngine';
-import { IHOMISPatientCard } from '@/components/IHOMISPatientCard';
 
 export default function CommandHubPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
-  const [activeAlert, setActiveAlert] = useState<EmergencyAlert | null>(null);
+  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [testTriggering, setTestTriggering] = useState(false);
-  const [metrics, setMetrics] = useState(IHOMISService.getMetrics());
+
+  const fetchAlerts = async () => {
+    const list = await EmergencyService.getActiveAlerts(activeHospital.id);
+    setActiveAlerts(list);
+    setLoading(false);
+  };
 
   useEffect(() => {
     EmergencyService.init();
     IHOMISService.initCloudSync();
 
     setActiveHospital(HospitalService.getActiveHospital());
+    fetchAlerts();
 
     const handleHospChange = (e: any) => {
       if (e.detail) setActiveHospital(e.detail);
     };
     window.addEventListener('cph_hospital_changed', handleHospChange);
 
-    EmergencyService.getActiveAlert().then((alert) => {
-      setActiveAlert(alert);
-      setLoading(false);
+    const unsubscribe = EmergencyService.subscribe(() => {
+      fetchAlerts();
     });
 
-    IHOMISService.fetchPatientsFromCloud().then(() => {
-      setMetrics(IHOMISService.getMetrics());
-    });
-
-    const unsubscribe = EmergencyService.subscribe((alert, eventType) => {
-      if (eventType === 'RESOLVED') {
-        setActiveAlert(null);
-      } else if (alert && (alert.status === 'ACTIVE' || alert.status === 'RESPONDING')) {
-        setActiveAlert(alert);
-      }
-    });
+    const poll = setInterval(fetchAlerts, 2500);
 
     return () => {
       unsubscribe();
+      clearInterval(poll);
       window.removeEventListener('cph_hospital_changed', handleHospChange);
     };
-  }, []);
+  }, [activeHospital.id]);
 
   const handleQuickSimulation = async (codeId: 'code_blue' | 'code_baby_blue') => {
     setTestTriggering(true);
@@ -85,19 +80,20 @@ export default function CommandHubPage() {
       triggered_by_role: 'Triage Nurse',
     });
 
+    await fetchAlerts();
     setTimeout(() => setTestTriggering(false), 2000);
   };
 
-  const handleResolveActive = async () => {
-    if (!activeAlert) return;
+  const handleResolveAlert = async (alertId: string) => {
     audioEngine.stopSiren();
     audioEngine.stopSpeech();
     await EmergencyService.resolveAlert({
-      alert_id: activeAlert.id,
+      alert_id: alertId,
       resolved_by_name: 'Dr. Santos (Resuscitation Team Leader)',
       resolution_notes: 'Patient stabilized and transferred to CCU/ICU.',
       status: 'RESOLVED',
     });
+    await fetchAlerts();
   };
 
   return (
@@ -115,7 +111,7 @@ export default function CommandHubPage() {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {activeHospital.name} • Rapid Code Dispatch & Emergency Network
+            {activeHospital.name} • Multi-Code Concurrent Broadcasting Engine Active
           </p>
         </div>
 
@@ -144,7 +140,7 @@ export default function CommandHubPage() {
         </div>
       </div>
 
-      {/* Hospital Emergency Preparedness & Location Readiness (100% Data Privacy Compliant) */}
+      {/* Hospital Emergency Preparedness & Location Readiness */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         
         {/* Card 1: Monitored Hospital Wards */}
@@ -176,7 +172,7 @@ export default function CommandHubPage() {
             <span>24/7 Response Teams</span>
           </div>
           <div className="text-3xl font-black text-slate-900 mt-1">4 Teams</div>
-          <span className="text-[10px] text-red-700 font-bold">Code Blue, Red, Pink, Violet On-Duty</span>
+          <span className="text-[10px] text-red-700 font-bold">Code Blue, Baby Blue, Red, Pink</span>
         </Link>
 
         {/* Card 4: Data Privacy Protection */}
@@ -190,59 +186,79 @@ export default function CommandHubPage() {
         </div>
       </div>
 
-      {/* Emergency Status Banner */}
+      {/* Emergency Status Section (Concurrent Alerts Grid) */}
       <div>
-        {activeAlert ? (
-          <div className={`relative overflow-hidden rounded-3xl border-2 p-6 shadow-md transition-all ${
-            activeAlert.code_id === 'code_blue' || activeAlert.code_id === 'code_baby_blue'
-              ? 'bg-blue-900 text-white border-blue-400'
-              : 'bg-red-900 text-white border-red-400'
-          }`}>
-            <div className="space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center space-x-1 rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-white shadow">
-                      <span className="h-2 w-2 rounded-full bg-white animate-ping mr-1" />
-                      EMERGENCY ACTIVE
-                    </span>
-                    <span className="text-xs text-slate-200 font-medium">
-                      Started: {new Date(activeAlert.triggered_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-
-                  <h2 className="text-2xl sm:text-3xl font-black text-white mt-2">
-                    {activeAlert.code_details?.code_name} — {activeAlert.code_details?.title}
-                  </h2>
-
-                  <p className="text-base font-black text-amber-300 mt-1 flex items-center">
-                    <MapPin className="h-4 w-4 mr-1 text-red-400 shrink-0" />
-                    {activeAlert.location_text}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href="/monitor"
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider shadow-sm transition flex items-center space-x-1.5"
-                  >
-                    <Monitor className="h-4 w-4" />
-                    <span>Open Emergency Kiosk</span>
-                  </Link>
-                  <button
-                    onClick={handleResolveActive}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
-                  >
-                    Clear Emergency
-                  </button>
-                </div>
+        {activeAlerts.length > 0 ? (
+          <div className="space-y-3">
+            {activeAlerts.length > 1 && (
+              <div className="p-2.5 bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-between shadow-sm">
+                <span className="flex items-center space-x-1.5">
+                  <Layers className="h-4 w-4 animate-bounce" />
+                  <span>{activeAlerts.length} CONCURRENT EMERGENCY CODES IN PROGRESS</span>
+                </span>
+                <Link href="/monitor" className="underline text-red-100 hover:text-white">
+                  Open Split-Screen Monitor ➔
+                </Link>
               </div>
+            )}
 
-              {activeAlert.patient_details && (
-                <div className="pt-3 border-t border-white/20">
-                  <IHOMISPatientCard patient={activeAlert.patient_details} />
-                </div>
-              )}
+            <div className={`grid grid-cols-1 ${activeAlerts.length > 1 ? 'lg:grid-cols-2' : ''} gap-4`}>
+              {activeAlerts.map((alert) => {
+                const code = alert.code_details;
+                const isCodeBlue = alert.code_id === 'code_blue' || alert.code_id === 'code_baby_blue';
+
+                return (
+                  <div
+                    key={alert.id}
+                    className={`relative overflow-hidden rounded-3xl border-2 p-6 shadow-md transition-all ${
+                      isCodeBlue
+                        ? 'bg-blue-900 text-white border-blue-400'
+                        : 'bg-red-900 text-white border-red-400'
+                    }`}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="inline-flex items-center space-x-1 rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-white shadow">
+                              <span className="h-2 w-2 rounded-full bg-white animate-ping mr-1" />
+                              EMERGENCY ACTIVE
+                            </span>
+                            <span className="text-xs text-slate-200 font-medium">
+                              Started: {new Date(alert.triggered_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+
+                          <h2 className="text-2xl font-black text-white mt-1.5">
+                            {code?.code_name} — {code?.title}
+                          </h2>
+
+                          <p className="text-base font-black text-amber-300 mt-1 flex items-center">
+                            <MapPin className="h-4 w-4 mr-1 text-red-400 shrink-0" />
+                            {alert.location_text}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href="/monitor"
+                            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider shadow-sm transition flex items-center space-x-1.5"
+                          >
+                            <Monitor className="h-4 w-4" />
+                            <span>Kiosk</span>
+                          </Link>
+                          <button
+                            onClick={() => handleResolveAlert(alert.id)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -259,7 +275,7 @@ export default function CommandHubPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  No active emergency codes. Realtime broadcasting channels and iHOMIS census are connected.
+                  No active emergency codes in {activeHospital.name}. Realtime broadcasting channels and iHOMIS census are connected.
                 </p>
               </div>
             </div>
@@ -278,84 +294,59 @@ export default function CommandHubPage() {
       {/* 4 Clean Station Cards Grid */}
       <div className="space-y-3">
         <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">
-          Hospital Code Alert Stations
+          Emergency Command Stations & Quick Access
         </h3>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* Station 1: Trigger */}
-          <Link 
-            href="/trigger"
-            className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-red-500 hover:shadow-md transition group relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <div className="p-2.5 rounded-xl bg-red-50 text-red-600 group-hover:bg-red-600 group-hover:text-white transition">
-                <ShieldAlert className="h-5 w-5" />
+          <Link href="/trigger" className="bg-white p-5 rounded-3xl border border-slate-200 hover:border-red-500 hover:shadow-lg transition group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-2xl bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white transition">
+                <ShieldAlert className="h-6 w-6" />
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-red-500 group-hover:translate-x-1 transition" />
+              <span className="text-xs font-bold text-red-600">1-Tap Trigger</span>
             </div>
-            <h4 className="font-extrabold text-sm text-slate-900 mt-3 group-hover:text-red-600 transition">
-              1. Trigger Station
-            </h4>
+            <h4 className="text-base font-black text-slate-900">Code Trigger Station</h4>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Nurse interface with 1-touch & slide-to-activate emergency dispatch and auto-matched iHOMIS beds.
+              Nurse Station & Triage rapid dispatch with 58 monitored wards & rooms.
             </p>
           </Link>
 
-          {/* Station 2: Monitor */}
-          <Link 
-            href="/monitor"
-            className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-blue-500 hover:shadow-md transition group relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition">
-                <Tv className="h-5 w-5" />
+          <Link href="/monitor" className="bg-white p-5 rounded-3xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-2xl bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition">
+                <Tv className="h-6 w-6" />
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition" />
+              <span className="text-xs font-bold text-blue-600">Split View Ready</span>
             </div>
-            <h4 className="font-extrabold text-sm text-slate-900 mt-3 group-hover:text-blue-600 transition">
-              2. Central TV Monitor
-            </h4>
+            <h4 className="text-base font-black text-slate-900">Central TV Monitor</h4>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Hallway & ER wall display with loud siren, text-to-speech voice announcements, and live responder ETA.
+              High-visibility hallway display with loud sirens, Voice TTS, and split-screen mode.
             </p>
           </Link>
 
-          {/* Station 3: Responder */}
-          <Link 
-            href="/responder"
-            className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-500 hover:shadow-md transition group relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition">
-                <Smartphone className="h-5 w-5" />
+          <Link href="/responder" className="bg-white p-5 rounded-3xl border border-slate-200 hover:border-emerald-500 hover:shadow-lg transition group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-2xl bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition">
+                <Smartphone className="h-6 w-6" />
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-emerald-500 group-hover:translate-x-1 transition" />
+              <span className="text-xs font-bold text-emerald-600">Mobile Alerts</span>
             </div>
-            <h4 className="font-extrabold text-sm text-slate-900 mt-3 group-hover:text-emerald-600 transition">
-              3. Responder Mobile
-            </h4>
+            <h4 className="text-base font-black text-slate-900">Code Responder Hub</h4>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              For on-call doctors & nurses. 1-tap "I am responding (ETA: 2 mins)" and on-scene arrival logging.
+              For on-duty doctors and nurses to acknowledge codes, send ETA, and coordinate.
             </p>
           </Link>
 
-          {/* Station 4: Hospital Wards & Privacy */}
-          <Link 
-            href="/trigger"
-            className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-purple-500 hover:shadow-md transition group relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition">
-                <Building className="h-5 w-5" />
+          <Link href="/history" className="bg-white p-5 rounded-3xl border border-slate-200 hover:border-purple-500 hover:shadow-lg transition group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-2xl bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition">
+                <History className="h-6 w-6" />
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-1 transition" />
+              <span className="text-xs font-bold text-purple-600">Audit Logs</span>
             </div>
-            <h4 className="font-extrabold text-sm text-slate-900 mt-3 group-hover:text-purple-600 transition">
-              4. Hospital Wards & Rooms
-            </h4>
+            <h4 className="text-base font-black text-slate-900">Incident History</h4>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              11 Monitored Wards & 378 Bed Locations with 100% Data Privacy (RA 10173) protection.
+              Full hospital CQI response audit logs with timestamps and responder metrics.
             </p>
           </Link>
 
