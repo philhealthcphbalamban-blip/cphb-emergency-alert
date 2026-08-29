@@ -493,26 +493,105 @@ export const MOCK_IHOMIS_PATIENTS: IHOMISPatient[] = [
   },
 ];
 
+const LOCAL_STORAGE_KEY_PATIENTS = 'ihomis_patients_live_v1';
+
 export class IHOMISService {
+  private static livePatients: IHOMISPatient[] = [...MOCK_IHOMIS_PATIENTS];
+  private static isCloudSyncInitialized = false;
+
   public static getMetrics(): IHOMISMetrics {
-    return IHOMIS_LIVE_METRICS;
+    const activeAdmissions = this.getPatientsByModule('ADMISSION').length;
+    const erEncounters = this.getPatientsByModule('EMERGENCY').length;
+    return {
+      ...IHOMIS_LIVE_METRICS,
+      activeAdmissions: activeAdmissions > 0 ? activeAdmissions : IHOMIS_LIVE_METRICS.activeAdmissions,
+      erEncounters: erEncounters > 0 ? erEncounters : IHOMIS_LIVE_METRICS.erEncounters,
+    };
+  }
+
+  public static initCloudSync() {
+    if (typeof window === 'undefined') return;
+    if (this.isCloudSyncInitialized) return;
+    this.isCloudSyncInitialized = true;
+
+    // 1. Read from localStorage if available
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_PATIENTS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.livePatients = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading local patients:', e);
+    }
+
+    // 2. Fetch latest from Cloud
+    this.fetchPatientsFromCloud();
+  }
+
+  public static async fetchPatientsFromCloud(): Promise<IHOMISPatient[]> {
+    try {
+      const res = await fetch('/api/ihomis/patients', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.patients) && json.patients.length > 0) {
+          this.livePatients = json.patients;
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY_PATIENTS, JSON.stringify(json.patients));
+            } catch (e) {}
+          }
+          return json.patients;
+        }
+      }
+    } catch (e) {
+      console.warn('Cloud patient fetch error:', e);
+    }
+    return this.livePatients;
+  }
+
+  public static async savePatientsToCloud(patients: IHOMISPatient[]): Promise<boolean> {
+    this.livePatients = patients;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY_PATIENTS, JSON.stringify(patients));
+      } catch (e) {}
+    }
+
+    try {
+      const res = await fetch('/api/ihomis/patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patients }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('Save patients to cloud error:', e);
+      return false;
+    }
   }
 
   private static normalizeQuery(q: string): string {
     return q.trim().toLowerCase().replace(/^0+/, '');
   }
 
+  public static getAllPatients(): IHOMISPatient[] {
+    return this.livePatients;
+  }
+
   public static findPatientByLocation(locationText: string): IHOMISPatient | null {
     if (!locationText) return null;
     const cleanQuery = locationText.toLowerCase();
 
-    const exact = MOCK_IHOMIS_PATIENTS.find(p => 
+    const exact = this.livePatients.find(p => 
       cleanQuery.includes(p.room_bed.toLowerCase()) ||
       (cleanQuery.includes(p.ward_name.toLowerCase()) && cleanQuery.includes(p.room_bed.toLowerCase()))
     );
     if (exact) return exact;
 
-    const partial = MOCK_IHOMIS_PATIENTS.find(p => {
+    const partial = this.livePatients.find(p => {
       const bedPart = p.room_bed.toLowerCase().replace(/[^a-z0-9]/g, '');
       const queryPart = cleanQuery.replace(/[^a-z0-9]/g, '');
       if (bedPart && queryPart.includes(bedPart)) return true;
@@ -530,7 +609,7 @@ export class IHOMISService {
     const raw = hrnOrCase.trim().toLowerCase();
     const normalized = this.normalizeQuery(hrnOrCase);
 
-    const match = MOCK_IHOMIS_PATIENTS.find(p => {
+    const match = this.livePatients.find(p => {
       const pHrn = p.hrn.toLowerCase();
       const pNormHrn = this.normalizeQuery(p.hrn);
       const pCase = p.case_no.toLowerCase();
@@ -572,7 +651,7 @@ export class IHOMISService {
   }
 
   public static getPatientsByModule(module?: IHOMISSourceModule): IHOMISPatient[] {
-    if (!module) return MOCK_IHOMIS_PATIENTS;
-    return MOCK_IHOMIS_PATIENTS.filter(p => p.source_module === module);
+    if (!module) return this.livePatients;
+    return this.livePatients.filter(p => p.source_module === module);
   }
 }

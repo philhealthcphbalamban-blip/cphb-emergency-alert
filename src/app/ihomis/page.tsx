@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building, 
   Search, 
@@ -15,28 +15,193 @@ import {
   Check,
   Filter,
   Stethoscope,
-  Award
+  Award,
+  Upload,
+  Cloud,
+  RefreshCw,
+  Plus,
+  X
 } from 'lucide-react';
 import { IHOMISPatient, IHOMISSourceModule } from '@/types/ihomis';
 import { IHOMISService, IHOMIS_CONFIG } from '@/lib/ihomisService';
 import { StaffService } from '@/lib/staffService';
 import { useRouter } from 'next/navigation';
+import * as XLSX from 'xlsx';
 
 export default function IHOMISDirectoryPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<IHOMISSourceModule>('ADMISSION');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sexFilter, setSexFilter] = useState<string>('ALL');
   const [serviceFilter, setServiceFilter] = useState<string>('ALL');
   const [patients, setPatients] = useState<IHOMISPatient[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  // Add Patient Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [formHrn, setFormHrn] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formGender, setFormGender] = useState<'MALE' | 'FEMALE'>('FEMALE');
+  const [formWard, setFormWard] = useState('WARD 5 (OB-GYN)');
+  const [formBed, setFormBed] = useState('tempobed-ward05A');
+  const [formDiagnosis, setFormDiagnosis] = useState('');
+  const [formService, setFormService] = useState('OBPRDOC');
+  const [formAge, setFormAge] = useState(30);
 
   const metrics = IHOMISService.getMetrics();
   const doctorsList = StaffService.getDoctors();
 
-  useEffect(() => {
+  const loadPatients = () => {
     const list = IHOMISService.getPatientsByModule(activeTab);
     setPatients(list);
+  };
+
+  useEffect(() => {
+    IHOMISService.initCloudSync();
+    loadPatients();
+
+    // Fetch latest from cloud
+    IHOMISService.fetchPatientsFromCloud().then(() => {
+      loadPatients();
+    });
   }, [activeTab]);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    setSyncStatus('Syncing from Supabase Cloud...');
+    try {
+      await IHOMISService.fetchPatientsFromCloud();
+      loadPatients();
+      setSyncStatus('✓ Synchronized with Cloud!');
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch (e) {
+      setSyncStatus('Sync error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Excel / CSV File Upload Handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    setIsSyncing(true);
+    setSyncStatus('Reading and parsing iHOMIS Census...');
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      const parsedPatients: IHOMISPatient[] = [];
+
+      json.forEach((row, index) => {
+        const rawHrn = String(row['HRN'] || row['Health Record No'] || row['Patient ID'] || row['Hospital No'] || `000000000${157200 + index}`).trim();
+        const rawName = String(row['Patient Name'] || row['Name'] || row['PATIENT NAME'] || row['Full Name'] || '').trim();
+        if (!rawName) return;
+
+        const rawSex = String(row['Sex'] || row['Gender'] || row['SEX'] || 'FEMALE').toUpperCase().startsWith('M') ? 'MALE' : 'FEMALE';
+        const rawWard = String(row['Ward'] || row['Ward Name'] || row['Location'] || (activeTab === 'EMERGENCY' ? 'Emergency Department (ER)' : 'MEDICAL WARD (WARD 4)')).trim();
+        const rawBed = String(row['Bed'] || row['Room Bed'] || row['Room'] || 'Bed 01').trim();
+        const rawDiag = String(row['Diagnosis'] || row['Admitting Diagnosis'] || row['Chief Complaint'] || 'Under Medical Observation').trim();
+        const rawService = String(row['Service'] || row['Type of Service'] || 'MEDICAL').trim();
+
+        parsedPatients.push({
+          hrn: rawHrn.padStart(15, '0'),
+          case_no: activeTab === 'EMERGENCY' ? `ER-2026-${rawHrn.slice(-6)}` : `ADM-2026-${rawHrn.slice(-6)}`,
+          patient_name: rawName.toUpperCase(),
+          age: Number(row['Age']) || 35,
+          dob: String(row['DOB'] || '01/01/1990'),
+          gender: rawSex as any,
+          source_module: activeTab,
+          ward_name: rawWard,
+          room_bed: rawBed,
+          admitting_diagnosis: rawDiag,
+          accommodation: 'NON-BASIC',
+          type_of_service: rawService,
+          attending_physician: String(row['Physician'] || row['Attending Physician'] || 'Attending Physician'),
+          admission_date: new Date().toLocaleDateString('en-US'),
+          admission_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          code_status: 'FULL_CODE',
+          allergies: ['NKDA'],
+          blood_type: 'O+',
+          fall_risk: 'MEDIUM',
+          ihomis_url: `${IHOMIS_CONFIG.baseUrl}?hrn=${rawHrn}`,
+        });
+      });
+
+      if (parsedPatients.length > 0) {
+        // Merge with existing patients from other module
+        const otherModulePatients = IHOMISService.getAllPatients().filter(p => p.source_module !== activeTab);
+        const combined = [...parsedPatients, ...otherModulePatients];
+        
+        await IHOMISService.savePatientsToCloud(combined);
+        loadPatients();
+        setSyncStatus(`✓ Uploaded & Synced ${parsedPatients.length} Patients to Cloud!`);
+        setTimeout(() => setSyncStatus(null), 4000);
+      } else {
+        setSyncStatus('⚠️ No valid patient rows found in file.');
+      }
+    } catch (err: any) {
+      console.error('Excel parse error:', err);
+      setSyncStatus(`❌ Error parsing file: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Add Single Patient Handler
+  const handleAddPatientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) return;
+
+    const hrn = formHrn.trim() || `000000000${Math.floor(100000 + Math.random() * 900000)}`;
+    const newPatient: IHOMISPatient = {
+      hrn: hrn.padStart(15, '0'),
+      case_no: activeTab === 'EMERGENCY' ? `ER-2026-${hrn.slice(-6)}` : `ADM-2026-${hrn.slice(-6)}`,
+      patient_name: formName.trim().toUpperCase(),
+      age: formAge,
+      dob: '01/01/1995',
+      gender: formGender,
+      source_module: activeTab,
+      ward_name: formWard,
+      room_bed: formBed,
+      admitting_diagnosis: formDiagnosis.trim() || 'Acute Clinical Condition',
+      accommodation: 'NON-BASIC',
+      type_of_service: formService,
+      attending_physician: 'Attending Physician',
+      admission_date: new Date().toLocaleDateString('en-US'),
+      admission_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      code_status: 'FULL_CODE',
+      allergies: ['NKDA'],
+      blood_type: 'O+',
+      fall_risk: 'MEDIUM',
+      ihomis_url: `${IHOMIS_CONFIG.baseUrl}?hrn=${hrn}`,
+    };
+
+    const currentAll = IHOMISService.getAllPatients();
+    const updated = [newPatient, ...currentAll.filter(p => p.hrn !== newPatient.hrn)];
+    
+    setIsSyncing(true);
+    await IHOMISService.savePatientsToCloud(updated);
+    loadPatients();
+    setIsSyncing(false);
+    setIsAddModalOpen(false);
+
+    // Reset Form
+    setFormHrn('');
+    setFormName('');
+    setFormDiagnosis('');
+    setSyncStatus('✓ Patient saved & synced to Cloud!');
+    setTimeout(() => setSyncStatus(null), 3000);
+  };
 
   // Strip leading zeros for ultra-flexible search
   const cleanNormalize = (val: string) => val.trim().toLowerCase().replace(/^0+/, '');
@@ -66,13 +231,7 @@ export default function IHOMISDirectoryPage() {
     return matchesSearch && matchesSex && matchesService;
   });
 
-  // If filtered is empty but user typed a valid HRN, check global lookup
-  const displayList = filteredPatients.length > 0 
-    ? filteredPatients 
-    : (searchQuery.trim().length >= 3 ? (() => {
-        const found = IHOMISService.findPatientByHRN(searchQuery, activeTab);
-        return found ? [found] : [];
-      })() : []);
+  const displayList = filteredPatients;
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -90,238 +249,146 @@ export default function IHOMISDirectoryPage() {
     <div className="w-full max-w-[98%] mx-auto px-3 sm:px-6 py-6 space-y-5">
       
       {/* Top Breadcrumb & Action Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-extrabold text-xs">
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-extrabold text-xs">
             <Bed className="h-4 w-4 text-emerald-700" />
             <span>
-              {activeTab === 'ADMISSION' ? 'Admission / Inpatient Lists' : 'Emergency Department Encounters'}
+              {activeTab === 'ADMISSION' ? 'Admission / Inpatient Census' : 'Emergency Department (ER) Census'}
             </span>
           </div>
-          <span className="text-xs text-slate-400 font-bold">•</span>
-          <span className="text-xs text-slate-500 font-semibold hidden md:inline">
-            Cebu Provincial Hospital - Balamban
+          <span className="text-xs text-slate-500 font-medium">
+            CPHB iHOMIS Plus Realtime Sync
           </span>
         </div>
 
-        {/* Live Module Switcher & Direct iHOMIS Links */}
+        {/* Global Cloud Sync & Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-            <button
-              onClick={() => {
-                setActiveTab('ADMISSION');
-                setSearchQuery('');
-              }}
-              className={`px-3.5 py-1.5 rounded-lg transition ${
-                activeTab === 'ADMISSION' ? 'bg-white text-emerald-800 shadow-sm font-extrabold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              /Admission ({metrics.activeAdmissions})
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('EMERGENCY');
-                setSearchQuery('');
-              }}
-              className={`px-3.5 py-1.5 rounded-lg transition ${
-                activeTab === 'EMERGENCY' ? 'bg-white text-emerald-800 shadow-sm font-extrabold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              /Emergency ({metrics.erEncounters})
-            </button>
-          </div>
-
-          <a
-            href={activeTab === 'ADMISSION' ? IHOMIS_CONFIG.admissionUrl : IHOMIS_CONFIG.emergencyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:flex items-center space-x-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition"
-          >
-            <span>Open in iHOMIS</span>
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-
-          <a
-            href={IHOMIS_CONFIG.personnelUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden lg:flex items-center space-x-1 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold transition"
-          >
-            <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
-            <span>/Ref_Personnel</span>
-          </a>
-        </div>
-      </div>
-
-      {/* TOP METRICS ROW (Exact styling from Image 1 & Image 2) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        
-        {/* Card 1: Active Admissions / Encounters */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider">
-            {activeTab === 'ADMISSION' ? <Bed className="h-4 w-4 text-emerald-600" /> : <Users className="h-4 w-4 text-emerald-600" />}
-            <span>{activeTab === 'ADMISSION' ? 'ACTIVE ADMISSIONS' : 'ENCOUNTERS'}</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">
-            {activeTab === 'ADMISSION' ? metrics.activeAdmissions : metrics.erEncounters}
-          </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-            {activeTab === 'ADMISSION' ? '182 of 182 matched' : '297 of 297 matched'}
-          </p>
-        </div>
-
-        {/* Card 2: Male Count */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider">
-            <User className="h-4 w-4 text-blue-600" />
-            <span>MALE</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">
-            {activeTab === 'ADMISSION' ? metrics.admissionsMale : metrics.erMale}
-          </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-            {activeTab === 'ADMISSION' ? 'In matched admissions' : 'In loaded results'}
-          </p>
-        </div>
-
-        {/* Card 3: Female Count */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider">
-            <User className="h-4 w-4 text-pink-600" />
-            <span>FEMALE</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">
-            {activeTab === 'ADMISSION' ? metrics.admissionsFemale : metrics.erFemale}
-          </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-            {activeTab === 'ADMISSION' ? 'In matched admissions' : 'In loaded results'}
-          </p>
-        </div>
-
-        {/* Card 4: Long Stay / For Admission */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider">
-            {activeTab === 'ADMISSION' ? <Clock className="h-4 w-4 text-amber-600" /> : <Bed className="h-4 w-4 text-blue-600" />}
-            <span>{activeTab === 'ADMISSION' ? 'LONG STAY' : 'FOR ADMISSION'}</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">
-            {activeTab === 'ADMISSION' ? metrics.longStayCount : metrics.erForAdmission}
-          </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-            {activeTab === 'ADMISSION' ? '57 Patients ≥ 7 Days' : 'In loaded results'}
-          </p>
-        </div>
-
-      </div>
-
-      {/* FILTER & SEARCH BAR WITH APPLY & RESET (Exact from Image 1 & 2) */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
           
-          {/* Search by Patient / HRN (4 cols) */}
-          <div className="lg:col-span-4">
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              Patient / HRN (e.g. 000000000068409 or 68409 or Mancia)
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search patient or record no"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-emerald-500 font-medium"
-              />
-            </div>
+          {/* Cloud Sync Status Indicator */}
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">
+            <Cloud className="h-3.5 w-3.5 text-blue-600 animate-pulse" />
+            <span>{syncStatus || 'Cloud Synced'}</span>
           </div>
 
-          {/* Sex Filter (2 cols) */}
-          <div className="lg:col-span-2">
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              Sex
-            </label>
-            <select
-              value={sexFilter}
-              onChange={(e) => setSexFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-semibold focus:outline-none focus:bg-white focus:border-emerald-500"
-            >
-              <option value="ALL">All</option>
-              <option value="FEMALE">Female</option>
-              <option value="MALE">Male</option>
-            </select>
-          </div>
+          {/* Sync Button */}
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+            title="Refresh from Supabase Cloud"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
 
-          {/* Accommodation Filter (2 cols) */}
-          <div className="lg:col-span-2">
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              Accommodation
-            </label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-semibold focus:outline-none focus:bg-white focus:border-emerald-500"
-            >
-              <option value="ALL">All</option>
-              <option value="NON-BASIC">Non-Basic</option>
-              <option value="SERVICE">Service</option>
-            </select>
-          </div>
+          {/* Upload Excel Button */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSyncing}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            <span>Upload iHOMIS Excel</span>
+          </button>
 
-          {/* Type of Service (2 cols) */}
-          <div className="lg:col-span-2">
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              Type of Service
-            </label>
-            <select
-              value={serviceFilter}
-              onChange={(e) => setServiceFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-semibold focus:outline-none focus:bg-white focus:border-emerald-500"
-            >
-              <option value="ALL">All Services</option>
-              <option value="OBNEWROOM">OBNEWROOM</option>
-              <option value="MEDICAL">MEDICAL</option>
-              <option value="SURGICAL">SURGICAL</option>
-              <option value="PEDIATRICS">PEDIATRICS</option>
-              <option value="OBSTETRICS">OBSTETRICS</option>
-              <option value="ICU">ICU</option>
-            </select>
-          </div>
-
-          {/* Apply & Reset Buttons (2 cols) */}
-          <div className="lg:col-span-2 flex items-center space-x-1.5">
-            <button
-              onClick={() => {}}
-              className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm flex items-center justify-center space-x-1 transition"
-            >
-              <Check className="h-3.5 w-3.5" />
-              <span>Apply</span>
-            </button>
-            <button
-              onClick={handleResetFilters}
-              className="py-2 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs border border-slate-200 transition"
-              title="Reset Filters"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
+          {/* Add Patient Button */}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Admit / Add Patient</span>
+          </button>
         </div>
       </div>
 
-      {/* DATA TABLE & WARDS / PERSONNEL LAYOUT (Widescreen 9-3 grid) */}
+      {/* Module Switcher Tabs (Admission vs Emergency) */}
+      <div className="flex border-b border-slate-200 bg-white rounded-t-2xl px-4 pt-2">
+        <button
+          onClick={() => setActiveTab('ADMISSION')}
+          className={`pb-3 px-4 font-black text-xs uppercase tracking-wider transition border-b-2 flex items-center space-x-2 ${
+            activeTab === 'ADMISSION'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Bed className="h-4 w-4" />
+          <span>Inpatient Admissions ({IHOMISService.getPatientsByModule('ADMISSION').length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('EMERGENCY')}
+          className={`pb-3 px-4 font-black text-xs uppercase tracking-wider transition border-b-2 flex items-center space-x-2 ${
+            activeTab === 'EMERGENCY'
+              ? 'border-red-600 text-red-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <ShieldAlert className="h-4 w-4" />
+          <span>Emergency Encounters ({IHOMISService.getPatientsByModule('EMERGENCY').length})</span>
+        </button>
+      </div>
+
+      {/* Filter & Search Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search HRN, Patient Name, Diagnosis, Ward..."
+            className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* Sex Filter */}
+          <select
+            value={sexFilter}
+            onChange={(e) => setSexFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none"
+          >
+            <option value="ALL">All Sex</option>
+            <option value="FEMALE">Female</option>
+            <option value="MALE">Male</option>
+          </select>
+
+          {/* Reset Filters */}
+          <button
+            onClick={handleResetFilters}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition flex items-center space-x-1"
+            title="Reset Filters"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Reset</span>
+          </button>
+        </div>
+      </div>
+
+      {/* DATA TABLE & WARDS LAYOUT (Widescreen 9-3 grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
         {/* Table Column (9 cols) */}
-        <div className="lg:col-span-9 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="lg:col-span-9 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
                   <th className="py-3 px-3">Health Record No</th>
-                  <th className="py-3 px-3">Patient Name (Lastname, Firstname Middlename)</th>
+                  <th className="py-3 px-3">Patient Name</th>
                   <th className="py-3 px-2">Sex</th>
-                  {activeTab === 'ADMISSION' && <th className="py-3 px-2">DOB</th>}
                   <th className="py-3 px-3">Diagnosis / Chief Complaint</th>
                   <th className="py-3 px-2">Service</th>
-                  <th className="py-3 px-2">Date / Time</th>
-                  <th className="py-3 px-3 text-center">Emergency Alert</th>
+                  <th className="py-3 px-2">Admitted</th>
+                  <th className="py-3 px-3 text-center">Emergency Dispatch</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
@@ -331,7 +398,7 @@ export default function IHOMISDirectoryPage() {
                     return (
                       <tr key={patient.hrn} className="hover:bg-blue-50/40 transition">
                         
-                        {/* HRN with green plus icon */}
+                        {/* HRN */}
                         <td className="py-3 px-3 whitespace-nowrap">
                           <div className="flex items-center space-x-1.5">
                             <PlusCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -360,13 +427,6 @@ export default function IHOMISDirectoryPage() {
                           </span>
                         </td>
 
-                        {/* DOB */}
-                        {activeTab === 'ADMISSION' && (
-                          <td className="py-3 px-2 text-[10px] text-slate-500 whitespace-nowrap">
-                            {patient.dob || '08/29/2026'}
-                          </td>
-                        )}
-
                         {/* Diagnosis */}
                         <td className="py-3 px-3 max-w-[280px]">
                           <p className="font-bold text-slate-900 leading-snug text-[11px] line-clamp-2">
@@ -391,8 +451,8 @@ export default function IHOMISDirectoryPage() {
                         <td className="py-3 px-3 text-center whitespace-nowrap">
                           <button
                             onClick={() => handleTriggerForPatient(patient)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-extrabold text-[10px] uppercase shadow-sm transition flex items-center space-x-1 mx-auto"
-                            title="Trigger Code Alert for this Patient"
+                            className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-[10px] uppercase shadow-sm transition flex items-center space-x-1 mx-auto cursor-pointer"
+                            title="Trigger Emergency Code for this Patient"
                           >
                             <ShieldAlert className="h-3.5 w-3.5" />
                             <span>Dispatch Code</span>
@@ -404,8 +464,8 @@ export default function IHOMISDirectoryPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 font-semibold">
-                      No patients matched "{searchQuery}".
+                    <td colSpan={7} className="py-12 text-center text-slate-400 font-semibold">
+                      No patients found matching your search.
                     </td>
                   </tr>
                 )}
@@ -413,21 +473,21 @@ export default function IHOMISDirectoryPage() {
             </table>
           </div>
 
-          {/* Table Footer with Match Count */}
-          <div className="p-3 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-            <span>Showing {displayList.length} of {activeTab === 'ADMISSION' ? metrics.activeAdmissions : metrics.erEncounters} entries</span>
-            <div className="flex items-center space-x-1">
-              <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-bold">1</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">Live Synced</span>
+          {/* Table Footer */}
+          <div className="p-3.5 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+            <span>Showing {displayList.length} admitted patient encounters</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block animate-ping" />
+              <span className="font-extrabold text-emerald-800">Supabase Cloud Active</span>
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar: Doctors Registry (Ref_Personnel) & Ward Vacancies */}
+        {/* Right Sidebar: Doctors Registry & Ward Vacancies */}
         <div className="lg:col-span-3 space-y-4">
           
-          {/* CPHB Ref_Personnel: Duty Doctors & PRC License Numbers */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          {/* Duty Doctors */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center space-x-1.5">
                 <Stethoscope className="h-4 w-4 text-blue-600" />
@@ -442,7 +502,7 @@ export default function IHOMISDirectoryPage() {
 
             <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {doctorsList.map((doc) => (
-                <div key={doc.id} className="p-2 rounded-lg bg-slate-50 border border-slate-100 space-y-0.5 text-xs">
+                <div key={doc.id} className="p-2 rounded-xl bg-slate-50 border border-slate-100 space-y-0.5 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-extrabold text-slate-900 text-[11px]">{doc.name}</span>
                     <span className="font-mono text-[9px] font-black text-emerald-800 bg-emerald-100 px-1 rounded">
@@ -458,7 +518,7 @@ export default function IHOMISDirectoryPage() {
           </div>
 
           {/* Ward Vacancies */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3.5">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div className="flex items-center space-x-1.5">
                 <Bed className="h-4 w-4 text-emerald-700" />
@@ -469,7 +529,7 @@ export default function IHOMISDirectoryPage() {
               <span className="text-[10px] text-slate-400 font-semibold">11 WARDS</span>
             </div>
 
-            {/* ICU NEW ROOM */}
+            {/* ICU */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                 <span>ICU NEW ROOM</span>
@@ -518,6 +578,113 @@ export default function IHOMISDirectoryPage() {
         </div>
 
       </div>
+
+      {/* Add Patient Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                <Bed className="h-5 w-5 text-blue-600" />
+                <span>Admit New Patient ({activeTab === 'ADMISSION' ? 'Inpatient' : 'Emergency'})</span>
+              </h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPatientSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Patient Full Name (LASTNAME, FIRSTNAME MI)*</label>
+                <input
+                  type="text"
+                  required
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="e.g. DELA CRUZ, JUAN SANTOS"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 uppercase font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Health Record No (HRN)</label>
+                  <input
+                    type="text"
+                    value={formHrn}
+                    onChange={(e) => setFormHrn(e.target.value)}
+                    placeholder="Auto-generated if blank"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Sex</label>
+                  <select
+                    value={formGender}
+                    onChange={(e) => setFormGender(e.target.value as any)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold"
+                  >
+                    <option value="FEMALE">Female</option>
+                    <option value="MALE">Male</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Ward / Department</label>
+                  <input
+                    type="text"
+                    required
+                    value={formWard}
+                    onChange={(e) => setFormWard(e.target.value)}
+                    placeholder="e.g. MEDICAL WARD (WARD 4)"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Room / Bed No</label>
+                  <input
+                    type="text"
+                    required
+                    value={formBed}
+                    onChange={(e) => setFormBed(e.target.value)}
+                    placeholder="e.g. TEMB1 / ER Bed 01"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Admitting Diagnosis / Chief Complaint</label>
+                <textarea
+                  rows={2}
+                  value={formDiagnosis}
+                  onChange={(e) => setFormDiagnosis(e.target.value)}
+                  placeholder="e.g. ACUTE MYOCARDIAL INFARCTION / HYPERTENSIVE URGENCY"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-black uppercase hover:bg-blue-700 shadow-md shadow-blue-600/30"
+                >
+                  Save & Sync to Cloud
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
