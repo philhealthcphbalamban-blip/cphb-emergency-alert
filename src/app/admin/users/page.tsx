@@ -117,7 +117,7 @@ export default function AdminUsersPage() {
         StaffService.setCurrentStaff(adminStaff);
       }
     } else {
-      setPinError('Sayop ang Admin PIN! (Default: 1234)');
+      setPinError('Sayop ang Admin PIN!');
     }
   };
 
@@ -761,7 +761,7 @@ export default function AdminUsersPage() {
                   type="password"
                   value={adminPin}
                   onChange={(e) => setAdminPin(e.target.value)}
-                  placeholder="Default: 1234"
+                  placeholder="Enter Security PIN"
                   autoComplete="new-password"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold text-center tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
                   autoFocus
@@ -795,10 +795,6 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </form>
-
-            <div className="text-[11px] text-slate-400 font-semibold border-t border-slate-100 pt-3">
-              Default Security PIN: <strong className="text-slate-700 font-mono">1234</strong>
-            </div>
           </div>
         </div>
       )}

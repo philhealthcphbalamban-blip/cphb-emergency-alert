@@ -41,7 +41,7 @@ export class AdminAuthService {
   public static setPin(newPin: string) {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(STORAGE_KEY_ADMIN_PIN, newPin);
+      localStorage.setItem(STORAGE_KEY_ADMIN_PIN, newPin.trim());
     } catch (e) {
       console.warn('Could not save custom Admin PIN:', e);
     }
@@ -50,7 +50,8 @@ export class AdminAuthService {
   public static verifyPin(input: string): boolean {
     const current = this.getPin().trim();
     const clean = (input || '').trim();
-    return clean === current || clean === '1234' || clean === 'cphb2026' || clean === 'admin';
+    // Strictly verify against the actual current PIN (No backdoor / default bypass!)
+    return clean === current;
   }
 }
 
