@@ -1,13 +1,15 @@
 /**
  * ============================================================================
- * CPH BALAMBAN - iHOMIS Plus Realtime Cloud Auto-Sync Content Script (v2.0)
+ * CPH BALAMBAN - iHOMIS Plus Realtime Cloud Auto-Sync Content Script (v2.1)
  * ============================================================================
+ * Ultra-lightweight, non-blocking, zero DOM observer overhead.
  */
 
-console.log('%c🏥 [CPHB iHOMIS+ Cloud Sync] Extension Engine Active', 'background: #059669; color: #fff; font-size: 13px; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
+console.log('%c🏥 [CPHB iHOMIS+ Cloud Sync] Extension Engine Active (Zero Overhead)', 'background: #059669; color: #fff; font-size: 13px; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
 const VERCEL_API = 'https://cphb-emergency-alert.vercel.app/api/ihomis/patients';
 let isSyncingNow = false;
+let lastSyncedHash = '';
 
 // Create floating status badge on iHOMIS screen
 function createFloatingBadge() {
@@ -17,8 +19,8 @@ function createFloatingBadge() {
   badge = document.createElement('div');
   badge.id = 'cphb-sync-badge';
   badge.style.position = 'fixed';
-  badge.style.bottom = '20px';
-  badge.style.right = '20px';
+  badge.style.bottom = '16px';
+  badge.style.right = '16px';
   badge.style.zIndex = '9999999';
   badge.style.background = '#0f172a';
   badge.style.color = '#fff';
@@ -77,17 +79,20 @@ async function extractAndSyncEncounters(isManual = false) {
   if (isSyncingNow && !isManual) return;
   createFloatingBadge();
 
-  const moduleType = getActiveModuleType();
-  const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
-  
-  if (tableRows.length === 0) {
-    updateBadgeStatus(`Waiting for ${moduleType} records...`, '#f59e0b');
+  // Check if page is currently busy loading AJAX
+  const hasLoadingSpinner = document.querySelector('.dataTables_processing, .spinner, .loading, [style*="display: block"][class*="loading"]');
+  if (hasLoadingSpinner && !isManual) {
+    updateBadgeStatus('iHOMIS Loading...', '#f59e0b');
     return;
   }
 
-  isSyncingNow = true;
-  updateBadgeStatus(`Syncing ${tableRows.length} ${moduleType}...`, '#3b82f6');
+  const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
+  if (tableRows.length === 0 || (tableRows.length === 1 && tableRows[0].innerText.includes('No data available'))) {
+    updateBadgeStatus('Waiting for records...', '#f59e0b');
+    return;
+  }
 
+  const moduleType = getActiveModuleType();
   const patients = [];
 
   tableRows.forEach((tr, index) => {
@@ -151,12 +156,21 @@ async function extractAndSyncEncounters(isManual = false) {
   });
 
   if (patients.length === 0) {
-    updateBadgeStatus('No valid rows found', '#f59e0b');
-    isSyncingNow = false;
+    updateBadgeStatus('Waiting for table...', '#f59e0b');
     return;
   }
 
-  // Direct HTTPS Push to Vercel API with CORS
+  // Prevent duplicate syncing of same data
+  const currentHash = `${moduleType}_${patients.length}_${patients[0].hrn}_${patients[patients.length - 1].hrn}`;
+  if (!isManual && currentHash === lastSyncedHash) {
+    return; // Already up to date
+  }
+
+  isSyncingNow = true;
+  lastSyncedHash = currentHash;
+  updateBadgeStatus(`Syncing ${patients.length} ${moduleType}...`, '#3b82f6');
+
+  // Direct HTTPS Push to Vercel API
   try {
     const res = await fetch(VERCEL_API, {
       method: 'POST',
@@ -175,26 +189,18 @@ async function extractAndSyncEncounters(isManual = false) {
       updateBadgeStatus(`✓ Synced ${patients.length} ${moduleType} (${timeStr})`, '#10b981');
       console.log(`%c✓ [CPHB Extension] Synced ${patients.length} ${moduleType} to Vercel!`, 'color: #10b981; font-weight: bold;');
     } else {
-      updateBadgeStatus(`⚠️ Server responded ${res.status}`, '#ef4444');
+      updateBadgeStatus(`⚠️ Server Error (${res.status})`, '#ef4444');
     }
   } catch (err) {
-    console.warn('Sync error:', err);
-    updateBadgeStatus(`❌ Network error`, '#ef4444');
+    console.warn('Sync network error:', err);
+    updateBadgeStatus(`❌ Network Error`, '#ef4444');
   } finally {
     isSyncingNow = false;
   }
 }
 
-// Initial Sync on load
-setTimeout(() => extractAndSyncEncounters(false), 1200);
+// Initial Sync after page finishes loading (3 seconds delay to let iHOMIS load fast)
+setTimeout(() => extractAndSyncEncounters(false), 3000);
 
-// Auto-sync polling every 12 seconds
-setInterval(() => extractAndSyncEncounters(false), 12000);
-
-// Observe DOM updates
-const observer = new MutationObserver(() => {
-  if (!isSyncingNow) {
-    extractAndSyncEncounters(false);
-  }
-});
-observer.observe(document.body, { childList: true, subtree: true });
+// Gentle polling every 15 seconds (Zero CPU overhead)
+setInterval(() => extractAndSyncEncounters(false), 15000);
