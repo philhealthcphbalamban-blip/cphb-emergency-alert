@@ -1,30 +1,27 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   UserPlus, 
   Trash2, 
   Edit3, 
   ShieldCheck, 
-  Stethoscope, 
   Building, 
-  Phone, 
-  Check, 
   RotateCcw,
   Search,
   Key,
-  Award,
-  AlertCircle,
   FileSpreadsheet,
-  Upload,
   Lock,
   Unlock,
   CheckCircle2,
   RefreshCw,
-  Eye
+  Eye,
+  Filter,
+  Check,
+  Building2
 } from 'lucide-react';
-import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
+import { HospitalStaff } from '@/types/staff';
 import { StaffService, AdminAuthService, DEFAULT_CPHB_STAFF } from '@/lib/staffService';
 import * as XLSX from 'xlsx';
 
@@ -36,8 +33,9 @@ export default function AdminUsersPage() {
 
   const [staffList, setStaffList] = useState<HospitalStaff[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState<'ALL' | 'DOCTORS' | 'NURSES' | 'ADMIN'>('ALL');
+  const [selectedDept, setSelectedDept] = useState<string>('ALL');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   
   // Modal / Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -50,7 +48,7 @@ export default function AdminUsersPage() {
 
   // Form Fields
   const [formName, setFormName] = useState('');
-  const [formRole, setFormRole] = useState<string>('Physician');
+  const [formRole, setFormRole] = useState<string>('MEDICAL SPECIALIST');
   const [formDept, setFormDept] = useState<string>('Medical Section');
   const [formEmpId, setFormEmpId] = useState('');
   const [formAccredNo, setFormAccredNo] = useState('');
@@ -82,6 +80,7 @@ export default function AdminUsersPage() {
 
     reloadStaff();
 
+    // Fetch from Supabase Cloud on load (Crucial for Incognito & Mobile phones!)
     StaffService.fetchStaffFromCloud().then((cloudList) => {
       if (cloudList && cloudList.length > 0) {
         setStaffList(cloudList);
@@ -94,6 +93,18 @@ export default function AdminUsersPage() {
       window.removeEventListener('cphb_staff_directory_updated', handler);
     };
   }, []);
+
+  // Compute all unique hospital departments dynamically from uploaded data
+  const departmentsList = useMemo(() => {
+    const counts: Record<string, number> = {};
+    staffList.forEach(s => {
+      const dept = s.department?.trim() || 'General Hospital Unit';
+      counts[dept] = (counts[dept] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [staffList]);
 
   const handleManualCloudSync = async () => {
     setIsSyncing(true);
@@ -162,7 +173,7 @@ export default function AdminUsersPage() {
     if (!isAuthenticated) return;
     setEditingId(null);
     setFormName('');
-    setFormRole('Physician');
+    setFormRole('MEDICAL SPECIALIST');
     setFormDept('Medical Section');
     setFormEmpId(`DOC${Math.floor(10000 + Math.random() * 90000)}`);
     setFormAccredNo('');
@@ -191,7 +202,7 @@ export default function AdminUsersPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!isAuthenticated) {
       setIsPinModalOpenForLogin(true);
       return;
@@ -201,7 +212,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  // Excel File Upload Handler
+  // Excel File Upload Handler (Parses accurate Department & Designation from iHOMIS+)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAuthenticated) {
       setIsPinModalOpenForLogin(true);
@@ -234,11 +245,11 @@ export default function AdminUsersPage() {
           ).trim();
 
           const rawRole = String(
-            row['POSITION'] || row['Position'] || row['Position / Designation'] || row['DESIGNATION'] || row['Designation'] || row['ROLE'] || row['Role'] || ''
+            row['POSITION'] || row['Position'] || row['Position / Designation'] || row['DESIGNATION'] || row['Designation'] || row['ROLE'] || row['Role'] || 'Hospital Staff'
           ).trim();
 
           const rawDept = String(
-            row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || row['SECTION'] || row['Section'] || 'Medical Section'
+            row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || row['SECTION'] || row['Section'] || 'General Hospital Unit'
           ).trim();
 
           const rawAccred = String(
@@ -270,11 +281,10 @@ export default function AdminUsersPage() {
             row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Desk'
           ).trim();
 
-          // Precise Role Determination
+          // Accurate Doctor Detection (Only if ID starts with DOC, or Designation contains Physician/Medical Specialist)
           const empIdUpper = rawEmpId.toUpperCase();
           const nameUpper = rawName.toUpperCase();
           const roleUpper = rawRole.toUpperCase();
-          const deptUpper = rawDept.toUpperCase();
 
           const isDoc = 
             empIdUpper.startsWith('DOC') ||
@@ -292,12 +302,8 @@ export default function AdminUsersPage() {
             !isDoc && (
               roleUpper.includes('NURSE') || 
               roleUpper.includes('NURSING') || 
-              roleUpper.includes('RN') ||
-              deptUpper === 'NURSING SECTION' ||
-              deptUpper === 'NURSING'
+              roleUpper.includes('RN')
             );
-
-          const finalRole = rawRole || (isDoc ? 'Physician' : isNurse ? 'Staff Nurse' : 'Hospital Staff');
 
           const initials = rawName
             .replace(/Dr\.|MD|RN|Nurse|,|Mr\.|Ms\.|Mrs\./gi, '')
@@ -314,7 +320,7 @@ export default function AdminUsersPage() {
           return {
             id: `staff-excel-${Date.now()}-${idx}`,
             name: rawName,
-            role: finalRole,
+            role: rawRole,
             department: rawDept,
             employee_id: rawEmpId,
             prc_license_no: rawPrc !== rawAccred ? rawPrc : 'N/A',
@@ -341,12 +347,19 @@ export default function AdminUsersPage() {
     reader.readAsBinaryString(file);
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (parsedRows.length === 0) return;
-    StaffService.setBulkStaff(parsedRows);
-    setIsImportOpen(false);
-    setParsedRows([]);
-    alert(`Success! Na-import ug na-save sa Supabase Cloud ang ${parsedRows.length} ka personnel para sa tanang devices!`);
+    setIsImporting(true);
+    try {
+      await StaffService.setBulkStaff(parsedRows);
+      setIsImportOpen(false);
+      setParsedRows([]);
+      alert(`✓ Malampusong na-save sa Supabase Cloud ang ${parsedRows.length} ka personnel para sa tanang devices ug incognito!`);
+    } catch (e) {
+      alert('Error sa pag-save sa Cloud. Palihug sulayi pag-usab.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleSaveForm = (e: React.FormEvent) => {
@@ -405,6 +418,7 @@ export default function AdminUsersPage() {
     setIsFormOpen(false);
   };
 
+  // Filter staff by live search & selected Department
   const filteredStaff = staffList.filter(s => {
     const q = searchQuery.toLowerCase();
     const accred = (s.accreditation_no || '').toLowerCase();
@@ -417,10 +431,9 @@ export default function AdminUsersPage() {
       s.department.toLowerCase().includes(q) ||
       s.role.toLowerCase().includes(q);
 
-    if (filterRole === 'DOCTORS') return matchesQuery && s.is_doctor;
-    if (filterRole === 'NURSES') return matchesQuery && !s.is_doctor && !s.is_admin;
-    if (filterRole === 'ADMIN') return matchesQuery && s.is_admin;
-    return matchesQuery;
+    const matchesDept = selectedDept === 'ALL' || s.department === selectedDept;
+
+    return matchesQuery && matchesDept;
   });
 
   return (
@@ -458,7 +471,7 @@ export default function AdminUsersPage() {
             <p className="text-xs text-slate-500 mt-0.5">
               {isAuthenticated 
                 ? 'Full Admin Access: Upload Excel, Add/Edit Employees & PIN Security'
-                : 'Directory View for Wards, Doctors & Nurses • Admin PIN required to modify'
+                : 'Directory View for Wards, Doctors & Staff • Admin PIN required to modify'
               }
             </p>
           </div>
@@ -553,44 +566,77 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Filter & Search Toolbar */}
-      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search name, Accreditation, PRC, or Department..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
-          />
+      {/* DEPARTMENT FILTER & SEARCH TOOLBAR (Replaces old rigid Doctors/Nurses buttons) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          
+          {/* Live Search Input */}
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, position, accreditation no., or employee ID..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
+            />
+          </div>
+
+          {/* Department Filter Dropdown */}
+          <div className="flex items-center space-x-2 w-full md:w-auto">
+            <div className="flex items-center space-x-1 text-xs font-black text-slate-700 shrink-0">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <span>Department:</span>
+            </div>
+            <select
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+              className="w-full md:w-72 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500"
+            >
+              <option value="ALL">All Departments ({staffList.length})</option>
+              {departmentsList.map(d => (
+                <option key={d.name} value={d.name}>
+                  {d.name} ({d.count})
+                </option>
+              ))}
+            </select>
+
+            {selectedDept !== 'ALL' && (
+              <button
+                onClick={() => setSelectedDept('ALL')}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold"
+                title="Reset Department Filter"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
         </div>
 
-        <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+        {/* Quick Department Filter Chips */}
+        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs font-bold">
           <button
-            onClick={() => setFilterRole('ALL')}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
-              filterRole === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
+            onClick={() => setSelectedDept('ALL')}
+            className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
+              selectedDept === 'ALL' ? 'bg-slate-900 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
             }`}
           >
-            All ({staffList.length})
+            All Personnel ({staffList.length})
           </button>
-          <button
-            onClick={() => setFilterRole('DOCTORS')}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
-              filterRole === 'DOCTORS' ? 'bg-blue-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Doctors ({StaffService.getDoctors().length})
-          </button>
-          <button
-            onClick={() => setFilterRole('NURSES')}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
-              filterRole === 'NURSES' ? 'bg-emerald-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Nurses ({StaffService.getNurses().length})
-          </button>
+          {departmentsList.slice(0, 6).map(d => (
+            <button
+              key={d.name}
+              onClick={() => setSelectedDept(d.name)}
+              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
+                selectedDept === d.name ? 'bg-blue-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {d.name} ({d.count})
+            </button>
+          ))}
         </div>
+
       </div>
 
       {/* 📱 MOBILE CARD VIEW (Phones) */}
@@ -608,14 +654,15 @@ export default function AdminUsersPage() {
                   </div>
                   <div>
                     <span className="font-extrabold text-slate-900 text-xs block leading-tight">{staff.name}</span>
-                    <span className="text-[10px] text-slate-500 font-medium">{staff.department}</span>
+                    <span className="text-[10px] text-blue-700 font-semibold">{staff.department}</span>
                   </div>
                 </div>
 
                 <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 ${
                   staff.is_admin ? 'bg-slate-900 text-white' :
                   staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                  'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                  'bg-slate-100 text-slate-800 border border-slate-200'
                 }`}>
                   {staff.role}
                 </span>
@@ -658,7 +705,7 @@ export default function AdminUsersPage() {
           ))
         ) : (
           <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
-            Walay employee records nga nakit-an.
+            Walay employee records nga nakit-an sa napiling Department.
           </div>
         )}
       </div>
@@ -764,7 +811,7 @@ export default function AdminUsersPage() {
               ) : (
                 <tr>
                   <td colSpan={isAuthenticated ? 7 : 6} className="py-12 text-center text-slate-400 font-semibold">
-                    Walay employee records nga nakit-an.
+                    Walay employee records nga nakit-an sa napiling Department.
                   </td>
                 </tr>
               )}
@@ -894,6 +941,7 @@ export default function AdminUsersPage() {
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
+                  disabled={isImporting}
                   onClick={() => setIsImportOpen(false)}
                   className="py-2 px-4 rounded-xl bg-slate-200 text-slate-700 font-bold transition"
                 >
@@ -901,10 +949,18 @@ export default function AdminUsersPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={isImporting}
                   onClick={handleConfirmImport}
-                  className="py-2 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-wider shadow-md transition"
+                  className="py-2 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5"
                 >
-                  Confirm & Save All
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin text-white" />
+                      <span>Saving to Cloud...</span>
+                    </>
+                  ) : (
+                    <span>Confirm & Save All</span>
+                  )}
                 </button>
               </div>
             </div>
