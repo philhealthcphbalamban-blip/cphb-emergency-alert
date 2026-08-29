@@ -80,98 +80,412 @@ export const EMERGENCY_CODES: Record<string, EmergencyCode> = {
   }
 };
 
-// Full Complete List of All CPH Balamban Hospital Wards, Floors, Rooms & Beds
+// Exact Official Wards & Rooms extracted from CPH Balamban iHOMIS+ System
 export const INITIAL_LOCATIONS: HospitalLocation[] = [
-  // ==========================================
-  // GROUND FLOOR
-  // ==========================================
-  { id: 'cphb-er-trauma1', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Trauma Bay 1' },
-  { id: 'cphb-er-resus2', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Resuscitation Bay 2' },
-  { id: 'cphb-er-surg3', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Surgical Bay 3' },
-  { id: 'cphb-er-pedia1', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Pedia Bay 01' },
-  { id: 'cphb-er-pedia2', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Pedia Bay 02' },
-  { id: 'cphb-er-obs', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Observation Bay' },
-  { id: 'cphb-er-triage', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Triage Desk' },
-
-  { id: 'cphb-w10-bed1', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'WARD 10 (Isolation Ward)', room_bed: 'WARD10 - Bed 1' },
-  { id: 'cphb-w10-bed2', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'WARD 10 (Isolation Ward)', room_bed: 'WARD10 - Bed 2' },
-  { id: 'cphb-w10-negpress', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'WARD 10 (Isolation Ward)', room_bed: 'Negative Pressure Suite' },
-
-  { id: 'cphb-hd-01', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 01' },
-  { id: 'cphb-hd-02', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 02' },
-  { id: 'cphb-hd-03', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 03' },
-  { id: 'cphb-hd-04', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 04' },
-  { id: 'cphb-hd-05', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 05' },
-  { id: 'cphb-hd-06', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Hemodialysis Unit', room_bed: 'Dialysis Station 06' },
-
-  { id: 'cphb-opd-med', building: 'OPD Building', floor: 'Ground Floor', unit_ward: 'Outpatient Department (OPD)', room_bed: 'Internal Medicine Clinic' },
-  { id: 'cphb-opd-pedia', building: 'OPD Building', floor: 'Ground Floor', unit_ward: 'Outpatient Department (OPD)', room_bed: 'Pediatric Clinic' },
-  { id: 'cphb-opd-obgyn', building: 'OPD Building', floor: 'Ground Floor', unit_ward: 'Outpatient Department (OPD)', room_bed: 'OB-GYN Clinic' },
-  { id: 'cphb-opd-surg', building: 'OPD Building', floor: 'Ground Floor', unit_ward: 'Outpatient Department (OPD)', room_bed: 'Surgical Clinic' },
-  { id: 'cphb-rad-xray', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Radiology & Imaging', room_bed: 'X-Ray & CT Scan Suite' },
-  { id: 'cphb-lab-main', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Clinical Laboratory', room_bed: 'Laboratory & Blood Bank' },
-  { id: 'cphb-pharm-main', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Pharmacy', room_bed: 'Main Hospital Pharmacy' },
-  { id: 'cphb-lobby-main', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Hospital Lobby', room_bed: 'Admissions & Information Desk' },
-
-  // ==========================================
-  // 2ND FLOOR
-  // ==========================================
-  { id: 'cphb-icu-01', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'ICU NEW ROOM', room_bed: 'ICU Bed 01' },
-  { id: 'cphb-icu-02', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'ICU NEW ROOM', room_bed: 'ICU Bed 02' },
-  { id: 'cphb-icu-03', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'ICU NEW ROOM', room_bed: 'TEMPBED3-ICU3' },
-  { id: 'cphb-icu-04', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'ICU NEW ROOM', room_bed: 'TEMPBED4-ICU4' },
-  { id: 'cphb-icu-05', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'ICU NEW ROOM', room_bed: 'TEMPOBED-ICU' },
-
-  { id: 'cphb-w4-temb1', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'TEMB1' },
-  { id: 'cphb-w4-temb2', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'TEMB2' },
-  { id: 'cphb-w4-temb3', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'TEMB3' },
-  { id: 'cphb-w4-temb4', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'TEMB4' },
-  { id: 'cphb-w4-temp04a', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'tempobed-ward04A' },
-  { id: 'cphb-w4-temp04b', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'tempobed-ward04B' },
-  { id: 'cphb-w4-room401', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'Ward 4 Room 401' },
-  { id: 'cphb-w4-room402', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'MEDICAL WARD (WARD 4)', room_bed: 'Ward 4 Room 402' },
-
-  { id: 'cphb-w7-bed1', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'WARD 7 (Surgical Ward)', room_bed: 'WARD7 - Bed 1' },
-  { id: 'cphb-w7-bed2', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'WARD 7 (Surgical Ward)', room_bed: 'WARD7 - Bed 2' },
-  { id: 'cphb-w7-bed3', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'WARD 7 (Surgical Ward)', room_bed: 'WARD7 - Bed 3' },
-  { id: 'cphb-w7-room701', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'WARD 7 (Surgical Ward)', room_bed: 'Post-Op Room 701' },
-  { id: 'cphb-w7-room702', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'WARD 7 (Surgical Ward)', room_bed: 'Post-Op Room 702' },
-
-  { id: 'cphb-or-suite1', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'Operating Room Complex', room_bed: 'Main OR Suite 1' },
-  { id: 'cphb-or-suite2', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'Operating Room Complex', room_bed: 'Minor OR Suite 2' },
-  { id: 'cphb-or-pacu', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'Operating Room Complex', room_bed: 'PACU / Recovery Room' },
-  { id: 'cphb-ns-2nd', building: 'Main Complex', floor: '2nd Floor', unit_ward: '2nd Floor Nurses Station', room_bed: 'Central Nurse Station' },
-
-  // ==========================================
-  // 3RD FLOOR
-  // ==========================================
-  { id: 'cphb-w5-obnew', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'OBNEWROOM' },
-  { id: 'cphb-w5-obprdoc', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'OBPRDOC' },
-  { id: 'cphb-w5-temp05a', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'tempobed-ward05A' },
-  { id: 'cphb-w5-temp05b', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'tempobed-ward05B' },
-  { id: 'cphb-w5-temp05c', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'tempobed-ward05C' },
-  { id: 'cphb-w5-labor', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 5 (OB-GYN)', room_bed: 'Labor Room Suite' },
-
-  { id: 'cphb-dr-suite1', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'Delivery Room Complex', room_bed: 'Delivery Room Suite 1' },
-  { id: 'cphb-dr-suite2', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'Delivery Room Complex', room_bed: 'Delivery Room Suite 2' },
-
-  { id: 'cphb-nicu-inc1', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'NICU / Neonatal ICU', room_bed: 'Incubator Station 01' },
-  { id: 'cphb-nicu-inc2', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'NICU / Neonatal ICU', room_bed: 'Incubator Station 02' },
-  { id: 'cphb-nicu-inc3', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'NICU / Neonatal ICU', room_bed: 'Incubator Station 03' },
-  { id: 'cphb-nicu-warmer', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'NICU / Neonatal ICU', room_bed: 'Radiant Warmer Station' },
-
-  { id: 'cphb-w6-crib1', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 6 (Pediatric Ward)', room_bed: 'Crib 01' },
-  { id: 'cphb-w6-crib2', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 6 (Pediatric Ward)', room_bed: 'Crib 02' },
-  { id: 'cphb-w6-bed3', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 6 (Pediatric Ward)', room_bed: 'Nursery Bed 03' },
-  { id: 'cphb-w6-bed4', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 6 (Pediatric Ward)', room_bed: 'Pedia Bed 04' },
-  { id: 'cphb-w6-iso601', building: 'Main Complex', floor: '3rd Floor', unit_ward: 'WARD 6 (Pediatric Ward)', room_bed: 'Pedia Isolation Room 601' },
-  { id: 'cphb-ns-3rd', building: 'Main Complex', floor: '3rd Floor', unit_ward: '3rd Floor Nurses Station', room_bed: 'OB & Pedia Nurse Station' },
-
-  // ==========================================
-  // SERVICE & ADMINISTRATIVE AREAS
-  // ==========================================
-  { id: 'cphb-admin-office', building: 'Main Complex', floor: '2nd Floor', unit_ward: 'Hospital Administration', room_bed: 'Admin & Medical Director Office' },
-  { id: 'cphb-dietary-main', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Dietary Department', room_bed: 'Main Kitchen & Nutrition' },
-  { id: 'cphb-maint-eng', building: 'Annex Wing', floor: 'Ground Floor', unit_ward: 'Engineering & Maintenance', room_bed: 'Generator & Power Room' },
-  { id: 'cphb-grounds-gate', building: 'Perimeter', floor: 'Ground Floor', unit_ward: 'Hospital Perimeter', room_bed: 'Main Entrance & Ambulance Gate' },
+  {
+    "id": "cphb-er-trauma1",
+    "building": "Main Complex",
+    "floor": "Ground Floor",
+    "unit_ward": "Emergency Department (ER)",
+    "room_bed": "ER Trauma Bay 1"
+  },
+  {
+    "id": "cphb-er-resus2",
+    "building": "Main Complex",
+    "floor": "Ground Floor",
+    "unit_ward": "Emergency Department (ER)",
+    "room_bed": "ER Resuscitation Bay 2"
+  },
+  {
+    "id": "cphb-er-surg3",
+    "building": "Main Complex",
+    "floor": "Ground Floor",
+    "unit_ward": "Emergency Department (ER)",
+    "room_bed": "ER Surgical Bay 3"
+  },
+  {
+    "id": "cphb-er-pedia",
+    "building": "Main Complex",
+    "floor": "Ground Floor",
+    "unit_ward": "Emergency Department (ER)",
+    "room_bed": "ER Pediatric Bay"
+  },
+  {
+    "id": "cphb-er-triage",
+    "building": "Main Complex",
+    "floor": "Ground Floor",
+    "unit_ward": "Emergency Department (ER)",
+    "room_bed": "ER Triage Desk"
+  },
+  {
+    "id": "cphb-pui-pui01",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R201 (PUI01)"
+  },
+  {
+    "id": "cphb-pui-pui02",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R202 (PUI02)"
+  },
+  {
+    "id": "cphb-pui-pui03",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R203 (PUI03)"
+  },
+  {
+    "id": "cphb-pui-pui04",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R204 (PUI04)"
+  },
+  {
+    "id": "cphb-pui-pui05",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R205 (PUI05)"
+  },
+  {
+    "id": "cphb-pui-pui06",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R206 (PUI06)"
+  },
+  {
+    "id": "cphb-pui-pui07",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R207 (PUI07)"
+  },
+  {
+    "id": "cphb-pui-pui08",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R208 (PUI08)"
+  },
+  {
+    "id": "cphb-pui-pui09",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "PUI WARD (Medical)",
+    "room_bed": "R209 (PUI09)"
+  },
+  {
+    "id": "cphb-prvt-prvt2",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PRIVATE ROOMS",
+    "room_bed": "PRIVATEROOM2 (PRVT2)"
+  },
+  {
+    "id": "cphb-prvt-prvte",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PRIVATE ROOMS",
+    "room_bed": "PRIVATEROOM1 (PRVTE)"
+  },
+  {
+    "id": "cphb-pdw-pdw",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PEDIA WARD",
+    "room_bed": "PEDIA WARD (PDW)"
+  },
+  {
+    "id": "cphb-pdw-pdw2",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PEDIA WARD",
+    "room_bed": "PDW2 (PDW2)"
+  },
+  {
+    "id": "cphb-pdw-pdw3",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PEDIA WARD",
+    "room_bed": "PEDIAWARD (PDW3)"
+  },
+  {
+    "id": "cphb-pdw-pdw8",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PEDIA WARD",
+    "room_bed": "PEDIA WARD (PDW8)"
+  },
+  {
+    "id": "cphb-pdw-pdw9",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "PEDIA WARD",
+    "room_bed": "PEDIA WARD (PDW9)"
+  },
+  {
+    "id": "cphb-obnr-227ob",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEWBORN NR",
+    "room_bed": "OB227NEWBORN NR (227OB)"
+  },
+  {
+    "id": "cphb-obnew-0b222",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB222NEWROOM (0B222)"
+  },
+  {
+    "id": "cphb-obnew-ob221",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB221NEWROOM (OB221)"
+  },
+  {
+    "id": "cphb-obnew-ob223",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB223NEWROOM (OB223)"
+  },
+  {
+    "id": "cphb-obnew-ob224",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB224NEWROOM (OB224)"
+  },
+  {
+    "id": "cphb-obnew-ob225",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB225NEWROOM (OB225)"
+  },
+  {
+    "id": "cphb-obnew-ob226",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB226NEWROOM (OB226)"
+  },
+  {
+    "id": "cphb-obnew-ob227",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB227NEWROOM (OB227)"
+  },
+  {
+    "id": "cphb-obnew-ob228",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB228NEWROOM (OB228)"
+  },
+  {
+    "id": "cphb-obnew-ob229",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB299NEWROOM (OB229)"
+  },
+  {
+    "id": "cphb-obnew-ob231",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB231NEWROOM (OB231)"
+  },
+  {
+    "id": "cphb-obnew-ob232",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB232NEWROOM (OB232)"
+  },
+  {
+    "id": "cphb-obnew-ob233",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB233NEWROOMGYNEWARD (OB233)"
+  },
+  {
+    "id": "cphb-obnew-ob234",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB234NEWROOMGYNEWARD (OB234)"
+  },
+  {
+    "id": "cphb-obnew-ob235",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB235NEWROOM (OB235)"
+  },
+  {
+    "id": "cphb-obnew-ob236",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB236NEWROOM (OB236)"
+  },
+  {
+    "id": "cphb-obnew-ob237",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OB NEW ROOM (WARD 5)",
+    "room_bed": "OB237NEWROOM (OB237)"
+  },
+  {
+    "id": "cphb-obpr-ob230",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OBPRDOC (WARD 5)",
+    "room_bed": "OB230 (OB230)"
+  },
+  {
+    "id": "cphb-obpr-ob238",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "OBPRDOC (WARD 5)",
+    "room_bed": "OB238NEWROOM (OB238)"
+  },
+  {
+    "id": "cphb-nicu-nicu3",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "NICU WARD",
+    "room_bed": "NICU NEW ROOM (NICU3)"
+  },
+  {
+    "id": "cphb-wrd-ward4",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WARD4 (WARD)",
+    "room_bed": "WARD4 (WARD4)"
+  },
+  {
+    "id": "cphb-wrd-ward5",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WARD5 (WARD)",
+    "room_bed": "WARD5 (WARD5)"
+  },
+  {
+    "id": "cphb-wrd-ward6",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WARD6 (WARD)",
+    "room_bed": "WARD6 (WARD6)"
+  },
+  {
+    "id": "cphb-wrd-ward7",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WARD7 (WARD)",
+    "room_bed": "WARD7 (WARD7)"
+  },
+  {
+    "id": "cphb-wrd-wrd10",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WRD10 (WARD)",
+    "room_bed": "WRD10 (WRD10)"
+  },
+  {
+    "id": "cphb-wrd-wrd11",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WRD11 (WARD)",
+    "room_bed": "WRD11 (WRD11)"
+  },
+  {
+    "id": "cphb-wrd-wrd12",
+    "building": "Main Complex",
+    "floor": "Third Floor",
+    "unit_ward": "WRD12 (WARD)",
+    "room_bed": "WRD12 (WRD12)"
+  },
+  {
+    "id": "cphb-icu-icu2f",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ICU NEW ROOM",
+    "room_bed": "ICU-01 (ICU2F)"
+  },
+  {
+    "id": "cphb-ortho-hallw",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "HALLWAY (HALLW)"
+  },
+  {
+    "id": "cphb-ortho-r210a",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R210 (R210A)"
+  },
+  {
+    "id": "cphb-ortho-r211",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R211 (R211)"
+  },
+  {
+    "id": "cphb-ortho-r212",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R212 (R212)"
+  },
+  {
+    "id": "cphb-ortho-r213",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R213 (R213)"
+  },
+  {
+    "id": "cphb-ortho-r214",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R214 (R214)"
+  },
+  {
+    "id": "cphb-ortho-r215",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R215 (R215)"
+  },
+  {
+    "id": "cphb-ortho-r216",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R216 (R216)"
+  },
+  {
+    "id": "cphb-ortho-r217",
+    "building": "Main Complex",
+    "floor": "Second Floor",
+    "unit_ward": "ORTHO & SURGICAL WARD+",
+    "room_bed": "R217 (R217)"
+  }
 ];

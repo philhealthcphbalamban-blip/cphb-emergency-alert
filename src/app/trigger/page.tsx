@@ -349,16 +349,16 @@ function TriggerPadContent() {
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     { label: 'All', key: 'ALL' },
-                    { label: '🚑 ER', key: 'ER' },
+                    { label: '🚑 ER', key: 'Emergency' },
                     { label: '🫀 ICU', key: 'ICU' },
                     { label: '👶 NICU', key: 'NICU' },
-                    { label: '🩺 Ward 4 (Med)', key: 'WARD 4' },
-                    { label: '🤰 Ward 5 (OB)', key: 'WARD 5' },
-                    { label: '🧸 Ward 6 (Pedia)', key: 'WARD 6' },
-                    { label: '🩹 Ward 7 (Surg)', key: 'WARD 7' },
-                    { label: '😷 Ward 10 (Iso)', key: 'WARD 10' },
-                    { label: '🩸 Dialysis', key: 'Hemodialysis' },
-                    { label: '🔪 OR / DR', key: 'Operating' },
+                    { label: '🤰 OB New (Ward 5)', key: 'OB NEW' },
+                    { label: '👩‍⚕️ OB Priv', key: 'OBPR' },
+                    { label: '🧸 Pedia Ward', key: 'PEDIA' },
+                    { label: '🩹 Ortho & Surg', key: 'ORTHO' },
+                    { label: '😷 PUI Ward (R201-R209)', key: 'PUI' },
+                    { label: '🚪 Private Rooms', key: 'PRIVATE' },
+                    { label: '🩺 Wards 4-12', key: 'WARD' },
                   ].map((w) => (
                     <button
                       key={w.key}
@@ -388,14 +388,14 @@ function TriggerPadContent() {
 
               <div>
                 <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1.5">
-                  Select Ward / Department (CPH Balamban)
+                  Select Ward & Room (58 Official iHOMIS+ Locations)
                 </label>
                 <select
                   value={selectedLocationIndex}
                   onChange={(e) => handleLocationChange(Number(e.target.value))}
                   className="w-full rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 text-xs font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none shadow-inner"
                 >
-                  <optgroup label="📍 Ground Floor (ER, Dialysis, Isolation, OPD, Diagnostics)">
+                  <optgroup label="📍 Ground Floor (Emergency Department & Triage)">
                     {INITIAL_LOCATIONS.filter(l => l.floor === 'Ground Floor').map((loc) => {
                       const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
                       return (
@@ -406,8 +406,8 @@ function TriggerPadContent() {
                     })}
                   </optgroup>
 
-                  <optgroup label="📍 2nd Floor (ICU, Medical Ward 4, Surgical Ward 7, OR/PACU)">
-                    {INITIAL_LOCATIONS.filter(l => l.floor === '2nd Floor').map((loc) => {
+                  <optgroup label="📍 Second Floor (ICU, PUI Ward R201-R209, OB New Rooms, Ortho & Surgical, OB Newborn)">
+                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Second Floor').map((loc) => {
                       const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
                       return (
                         <option key={loc.id} value={realIdx}>
@@ -417,8 +417,8 @@ function TriggerPadContent() {
                     })}
                   </optgroup>
 
-                  <optgroup label="📍 3rd Floor (Ward 5 OB-GYN, Ward 6 Pediatric, NICU, Delivery Room)">
-                    {INITIAL_LOCATIONS.filter(l => l.floor === '3rd Floor').map((loc) => {
+                  <optgroup label="📍 Third Floor (Pedia Ward, NICU, Private Rooms, Wards 4, 5, 6, 7, 10, 11, 12)">
+                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Third Floor').map((loc) => {
                       const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
                       return (
                         <option key={loc.id} value={realIdx}>
