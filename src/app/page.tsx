@@ -144,7 +144,7 @@ export default function CommandHubPage() {
             <span>Inpatient Admissions</span>
           </div>
           <div className="text-3xl font-black text-slate-900 mt-1">{metrics.activeAdmissions}</div>
-          <span className="text-[10px] text-emerald-700 font-bold">170 Admitted Inpatients • 11 Wards</span>
+          <span className="text-[10px] text-emerald-700 font-bold">166 Admitted Inpatients • 11 Wards</span>
         </Link>
 
         {/* Card 2: ER Consultations */}
@@ -164,7 +164,7 @@ export default function CommandHubPage() {
             <span>Long Stay Admissions</span>
           </div>
           <div className="text-3xl font-black text-slate-900 mt-1">{metrics.longStayCount}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">53 Patients &ge; 7 Days</span>
+          <span className="text-[10px] text-slate-500 font-semibold">52 Patients &ge; 7 Days</span>
         </Link>
 
         {/* Card 4: Bed Capacity */}
@@ -173,7 +173,7 @@ export default function CommandHubPage() {
             <Building className="h-4 w-4 text-blue-600" />
             <span>Hospital Capacity</span>
           </div>
-          <div className="text-3xl font-black text-blue-700 mt-1">374 Beds</div>
+          <div className="text-3xl font-black text-blue-700 mt-1">378 Beds</div>
           <span className="text-[10px] text-blue-700 font-bold">53 Rooms • 11 Wards Active</span>
         </div>
       </div>

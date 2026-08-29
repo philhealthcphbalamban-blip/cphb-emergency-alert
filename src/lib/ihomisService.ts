@@ -10,12 +10,12 @@ export const IHOMIS_CONFIG: IHOMISConfig = {
   isLiveConnected: true,
 };
 
-// Exact Live Encounter Metrics from CPH Balamban iHOMIS Plus System
+// Exact Live Encounter Metrics from CPH Balamban iHOMIS Plus System (03:25 PM Live Update)
 export const IHOMIS_LIVE_METRICS: IHOMISMetrics = {
-  activeAdmissions: 170,
-  admissionsMale: 74,
-  admissionsFemale: 96,
-  longStayCount: 53,
+  activeAdmissions: 166,
+  admissionsMale: 73,
+  admissionsFemale: 93,
+  longStayCount: 52,
   erEncounters: 295,
   erMale: 4,
   erFemale: 12,
