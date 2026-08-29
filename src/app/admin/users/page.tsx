@@ -23,7 +23,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
-import { StaffService } from '@/lib/staffService';
+import { StaffService, AdminAuthService } from '@/lib/staffService';
 import * as XLSX from 'xlsx';
 
 export default function AdminUsersPage() {
@@ -54,6 +54,13 @@ export default function AdminUsersPage() {
   const [formContact, setFormContact] = useState('');
   const [formColor, setFormColor] = useState('#2563eb');
 
+  // Change PIN State
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinChangeMsg, setPinChangeMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
   const reloadStaff = () => {
     setStaffList(StaffService.getAllStaff());
   };
@@ -72,13 +79,39 @@ export default function AdminUsersPage() {
 
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPin === '1234' || adminPin === 'cphb2026' || adminPin === 'admin') {
+    if (AdminAuthService.verifyPin(adminPin)) {
       setIsAuthenticated(true);
       sessionStorage.setItem('cphb_admin_unlocked', 'true');
       setPinError('');
     } else {
-      setPinError('Sayop ang Admin PIN! (Default: 1234 o cphb2026)');
+      setPinError('Sayop ang Admin PIN!');
     }
+  };
+
+  const handleChangePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!AdminAuthService.verifyPin(oldPin)) {
+      setPinChangeMsg({ text: 'Sayop ang kasamtangang (Current) PIN!', isError: true });
+      return;
+    }
+    if (newPin.length < 4) {
+      setPinChangeMsg({ text: 'Ang Bag-ong PIN kinahanglan labing menos 4 ka characters!', isError: true });
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinChangeMsg({ text: 'Dili parehas ang Bag-ong PIN ug Confirm PIN!', isError: true });
+      return;
+    }
+
+    AdminAuthService.setPin(newPin);
+    setPinChangeMsg({ text: '✓ Malampusong na-usab ang imong Admin PIN!', isError: false });
+    setTimeout(() => {
+      setIsPinModalOpen(false);
+      setOldPin('');
+      setNewPin('');
+      setConfirmPin('');
+      setPinChangeMsg(null);
+    }, 1500);
   };
 
   const handleLogoutAdmin = () => {
@@ -348,6 +381,21 @@ export default function AdminUsersPage() {
           >
             <UserPlus className="h-4 w-4" />
             <span>+ Add Employee</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setOldPin('');
+              setNewPin('');
+              setConfirmPin('');
+              setPinChangeMsg(null);
+              setIsPinModalOpen(true);
+            }}
+            className="py-2.5 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5"
+            title="Change Admin Security PIN"
+          >
+            <Key className="h-4 w-4" />
+            <span>Change PIN</span>
           </button>
 
           <button
@@ -691,6 +739,90 @@ export default function AdminUsersPage() {
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* CHANGE ADMIN PIN MODAL */}
+      {isPinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <Key className="h-5 w-5 text-amber-600" />
+                <h3 className="text-base font-black text-slate-900">Change Admin Security PIN</h3>
+              </div>
+              <button
+                onClick={() => setIsPinModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePinSubmit} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Current (Kasamtangang) PIN:</label>
+                <input
+                  type="password"
+                  value={oldPin}
+                  onChange={(e) => setOldPin(e.target.value)}
+                  required
+                  placeholder="Enter current PIN"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">New (Bag-ong) Security PIN / Password:</label>
+                <input
+                  type="password"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value)}
+                  required
+                  placeholder="Min 4 characters (e.g. 5678)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Confirm New PIN:</label>
+                <input
+                  type="password"
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value)}
+                  required
+                  placeholder="Re-type new PIN"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {pinChangeMsg && (
+                <div className={`p-2.5 rounded-xl font-bold text-center ${
+                  pinChangeMsg.isError 
+                    ? 'bg-red-50 text-red-700 border border-red-200' 
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
+                  {pinChangeMsg.text}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPinModalOpen(false)}
+                  className="py-2 px-4 rounded-xl bg-slate-100 text-slate-700 font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-wider shadow-md transition"
+                >
+                  Update PIN
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

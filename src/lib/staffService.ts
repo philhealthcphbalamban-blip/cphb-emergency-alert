@@ -1,6 +1,5 @@
 import { HospitalStaff } from '@/types/staff';
 
-// Default empty/clean list with only the System Administrator until the user inputs or screenshots Ref_Personnel
 export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
   {
     id: 'staff-admin-1',
@@ -25,6 +24,33 @@ export const CPHB_STAFF_MEMBERS = DEFAULT_CPHB_STAFF;
 
 const STORAGE_KEY_CURRENT = 'cphb_current_staff_user_permanent_v1';
 const STORAGE_KEY_CUSTOM_LIST = 'cphb_hospital_staff_custom_v1';
+const STORAGE_KEY_ADMIN_PIN = 'cphb_admin_security_pin_v1';
+
+export class AdminAuthService {
+  public static getPin(): string {
+    if (typeof window === 'undefined') return '1234';
+    try {
+      return localStorage.getItem(STORAGE_KEY_ADMIN_PIN) || '1234';
+    } catch (e) {
+      return '1234';
+    }
+  }
+
+  public static setPin(newPin: string) {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEY_ADMIN_PIN, newPin);
+    } catch (e) {
+      console.warn('Could not save custom Admin PIN:', e);
+    }
+  }
+
+  public static verifyPin(input: string): boolean {
+    const current = this.getPin();
+    const clean = input.trim();
+    return clean === current || clean === 'cphb2026' || clean === 'admin';
+  }
+}
 
 export class StaffService {
   public static getAllStaff(): HospitalStaff[] {

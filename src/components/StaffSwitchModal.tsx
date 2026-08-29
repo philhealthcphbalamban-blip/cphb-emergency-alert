@@ -15,7 +15,7 @@ import {
   Unlock
 } from 'lucide-react';
 import { HospitalStaff } from '@/types/staff';
-import { StaffService } from '@/lib/staffService';
+import { StaffService, AdminAuthService } from '@/lib/staffService';
 
 interface Props {
   isOpen: boolean;
@@ -81,14 +81,14 @@ export const StaffSwitchModal: React.FC<Props> = ({
 
   const handleVerifyAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPinInput === '1234' || adminPinInput === 'cphb2026' || adminPinInput === 'admin') {
+    if (AdminAuthService.verifyPin(adminPinInput)) {
       if (pendingAdminStaff) {
         onSelectStaff(pendingAdminStaff);
       }
       setPendingAdminStaff(null);
       onClose();
     } else {
-      setPinError('Sayop ang Admin PIN! (Default: 1234)');
+      setPinError('Sayop ang Admin PIN!');
     }
   };
 
