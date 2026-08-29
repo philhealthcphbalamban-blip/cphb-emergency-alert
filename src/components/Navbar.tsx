@@ -146,7 +146,11 @@ export const Navbar: React.FC = () => {
             {/* Active Duty Staff Switcher Button */}
             <button
               onClick={() => setModalOpen(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 transition shadow-sm"
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+                currentStaff.is_admin 
+                  ? 'bg-slate-900 border-slate-800 text-white hover:bg-slate-800'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
+              }`}
               title="Click to switch active duty nurse or doctor"
             >
               <div
@@ -156,15 +160,31 @@ export const Navbar: React.FC = () => {
                 {currentStaff.avatar_initials}
               </div>
               <div className="text-left hidden sm:block">
-                <span className="block text-[11px] font-extrabold text-slate-900 leading-tight">
+                <span className={`block text-[11px] font-extrabold leading-tight ${currentStaff.is_admin ? 'text-white' : 'text-slate-900'}`}>
                   {currentStaff.name}
                 </span>
-                <span className="block text-[9px] text-slate-500 leading-none">
-                  {currentStaff.department.split(' ')[0]} ({currentStaff.role})
+                <span className={`block text-[9px] leading-none ${currentStaff.is_admin ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                  {currentStaff.is_admin ? '● Admin Logged In' : `${currentStaff.department.split(' ')[0]} (${currentStaff.role})`}
                 </span>
               </div>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+              <ChevronDown className={`h-3.5 w-3.5 ${currentStaff.is_admin ? 'text-slate-400' : 'text-slate-400'}`} />
             </button>
+
+            {/* Quick Log Out Admin Button */}
+            {currentStaff.is_admin && (
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('cphb_admin_unlocked');
+                  const otherStaff = StaffService.getAllStaff().find(s => !s.is_admin) || StaffService.getAllStaff()[0];
+                  StaffService.setCurrentStaff(otherStaff);
+                  setModalOpen(true);
+                }}
+                className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-xs font-black text-red-700 transition shadow-sm"
+                title="Log Out Admin and switch to Ward / Doctor duty"
+              >
+                <span>Log Out Admin 🚪</span>
+              </button>
+            )}
 
             {/* Audio Chime Button */}
             <button

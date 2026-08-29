@@ -117,6 +117,10 @@ export default function AdminUsersPage() {
   const handleLogoutAdmin = () => {
     setIsAuthenticated(false);
     sessionStorage.removeItem('cphb_admin_unlocked');
+    const otherStaff = StaffService.getAllStaff().find(s => !s.is_admin) || StaffService.getAllStaff()[0];
+    if (otherStaff) {
+      StaffService.setCurrentStaff(otherStaff);
+    }
   };
 
   const handleOpenAdd = () => {
