@@ -50,8 +50,8 @@ export default function AdminUsersPage() {
 
   // Form Fields
   const [formName, setFormName] = useState('');
-  const [formRole, setFormRole] = useState<StaffRole>('Physician');
-  const [formDept, setFormDept] = useState<HospitalDepartment>('Medical Section');
+  const [formRole, setFormRole] = useState<string>('Physician');
+  const [formDept, setFormDept] = useState<string>('Medical Section');
   const [formEmpId, setFormEmpId] = useState('');
   const [formAccredNo, setFormAccredNo] = useState('');
   const [formPrcNo, setFormPrcNo] = useState('');
@@ -99,6 +99,7 @@ export default function AdminUsersPage() {
     setIsSyncing(true);
     const list = await StaffService.fetchStaffFromCloud();
     setStaffList(list);
+    await AdminAuthService.fetchCloudPin();
     setTimeout(() => {
       setIsSyncing(false);
     }, 600);
@@ -121,7 +122,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleChangePinSubmit = (e: React.FormEvent) => {
+  const handleChangePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!AdminAuthService.verifyPin(oldPin)) {
       setPinChangeMsg({ text: 'Sayop ang kasamtangang (Current) PIN!', isError: true });
@@ -136,8 +137,8 @@ export default function AdminUsersPage() {
       return;
     }
 
-    AdminAuthService.setPin(newPin);
-    setPinChangeMsg({ text: '✓ Malampusong na-usab ang imong Admin PIN!', isError: false });
+    await AdminAuthService.setPin(newPin);
+    setPinChangeMsg({ text: '✓ Malampusong na-usab ug na-sync sa Cloud ang imong Admin PIN!', isError: false });
     setTimeout(() => {
       setIsPinModalOpen(false);
       setOldPin('');
@@ -163,7 +164,7 @@ export default function AdminUsersPage() {
     setFormName('');
     setFormRole('Physician');
     setFormDept('Medical Section');
-    setFormEmpId(`CPHB-${Math.floor(1000 + Math.random() * 9000)}`);
+    setFormEmpId(`DOC${Math.floor(10000 + Math.random() * 90000)}`);
     setFormAccredNo('');
     setFormPrcNo('');
     setFormSpecialization('');
@@ -225,7 +226,19 @@ export default function AdminUsersPage() {
 
         const mapped: HospitalStaff[] = rawJson.map((row, idx) => {
           const rawName = String(
-            row['NAME'] || row['Name'] || row['EMPLOYEE_NAME'] || row['Personnel Name'] || row['Personnel'] || row['Doctor Name'] || `Staff ${idx + 1}`
+            row['EMPLOYEE_NAME'] || row['Employee Name'] || row['NAME'] || row['Name'] || row['Personnel Name'] || row['Personnel'] || row['Doctor Name'] || `Staff ${idx + 1}`
+          ).trim();
+
+          const rawEmpId = String(
+            row['EMPLOYEE_ID'] || row['Employee ID'] || row['ID'] || row['Emp ID'] || `CPHB-${1000 + idx}`
+          ).trim();
+
+          const rawRole = String(
+            row['POSITION'] || row['Position'] || row['Position / Designation'] || row['DESIGNATION'] || row['Designation'] || row['ROLE'] || row['Role'] || ''
+          ).trim();
+
+          const rawDept = String(
+            row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || row['SECTION'] || row['Section'] || 'Medical Section'
           ).trim();
 
           const rawAccred = String(
@@ -249,18 +262,6 @@ export default function AdminUsersPage() {
             row['PRC'] || row['PRC NO'] || row['PRC_NO'] || row['PRC_LICENSE'] || row['License'] || 'N/A'
           ).trim();
 
-          const rawDept = String(
-            row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || row['SECTION'] || row['Section'] || 'Medical Section'
-          ).trim();
-
-          const rawEmpId = String(
-            row['EMPLOYEE_ID'] || row['Employee ID'] || row['ID'] || row['Emp ID'] || `CPHB-${1000 + idx}`
-          ).trim();
-
-          const rawRole = String(
-            row['ROLE'] || row['Role'] || row['POSITION'] || row['Position'] || row['Designation'] || ''
-          ).trim();
-
           const rawSpec = String(
             row['SPECIALIZATION'] || row['Specialization'] || row['Scope'] || ''
           ).trim();
@@ -269,38 +270,59 @@ export default function AdminUsersPage() {
             row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Desk'
           ).trim();
 
-          const isDoc = 
-            rawName.toUpperCase().startsWith('DR.') || 
-            rawName.toUpperCase().startsWith('DR ') || 
-            rawName.toUpperCase().includes(' MD') || 
-            rawRole.toLowerCase().includes('doctor') || 
-            rawRole.toLowerCase().includes('physician') || 
-            rawDept.toLowerCase().includes('medical');
+          // Precise Role Determination
+          const empIdUpper = rawEmpId.toUpperCase();
+          const nameUpper = rawName.toUpperCase();
+          const roleUpper = rawRole.toUpperCase();
+          const deptUpper = rawDept.toUpperCase();
 
-          const finalRole: StaffRole = isDoc ? 'Physician' : (rawRole as any || 'Staff Nurse');
+          const isDoc = 
+            empIdUpper.startsWith('DOC') ||
+            nameUpper.startsWith('DR.') || 
+            nameUpper.startsWith('DR ') || 
+            nameUpper.includes(' MD') || 
+            roleUpper.includes('DOCTOR') || 
+            roleUpper.includes('PHYSICIAN') || 
+            roleUpper.includes('MEDICAL SPECIALIST') ||
+            roleUpper.includes('MEDICAL OFFICER') ||
+            roleUpper.includes('RESIDENT') ||
+            roleUpper.includes('CONSULTANT');
+
+          const isNurse = 
+            !isDoc && (
+              roleUpper.includes('NURSE') || 
+              roleUpper.includes('NURSING') || 
+              roleUpper.includes('RN') ||
+              deptUpper === 'NURSING SECTION' ||
+              deptUpper === 'NURSING'
+            );
+
+          const finalRole = rawRole || (isDoc ? 'Physician' : isNurse ? 'Staff Nurse' : 'Hospital Staff');
 
           const initials = rawName
-            .replace(/Dr\.|MD|RN|Nurse|,/gi, '')
+            .replace(/Dr\.|MD|RN|Nurse|,|Mr\.|Ms\.|Mrs\./gi, '')
             .trim()
             .split(' ')
             .filter(Boolean)
             .slice(0, 2)
             .map(w => w[0])
             .join('')
-            .toUpperCase() || (isDoc ? 'MD' : 'RN');
+            .toUpperCase() || (isDoc ? 'MD' : isNurse ? 'RN' : 'ST');
+
+          const colorHex = isDoc ? '#2563eb' : isNurse ? '#059669' : '#475569';
 
           return {
             id: `staff-excel-${Date.now()}-${idx}`,
             name: rawName,
             role: finalRole,
-            department: rawDept || (isDoc ? 'Medical Section' : 'Nursing Section'),
+            department: rawDept,
             employee_id: rawEmpId,
             prc_license_no: rawPrc !== rawAccred ? rawPrc : 'N/A',
             accreditation_no: rawAccred,
             specialization: rawSpec,
             contact_no: rawContact,
             avatar_initials: initials,
-            color_hex: isDoc ? '#2563eb' : '#059669',
+            color_hex: colorHex,
             is_doctor: isDoc,
             is_admin: false,
             can_trigger_code: true,
@@ -324,7 +346,7 @@ export default function AdminUsersPage() {
     StaffService.setBulkStaff(parsedRows);
     setIsImportOpen(false);
     setParsedRows([]);
-    alert(`Success! Na-import ug na-save sa Cloud ang ${parsedRows.length} ka personnel para sa tanang devices!`);
+    alert(`Success! Na-import ug na-save sa Supabase Cloud ang ${parsedRows.length} ka personnel para sa tanang devices!`);
   };
 
   const handleSaveForm = (e: React.FormEvent) => {
@@ -334,11 +356,24 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const isDoc = formRole === 'Physician' || formRole === 'Resident Physician' || formRole === 'Anesthesiologist' || formName.toUpperCase().startsWith('DR.');
-    const isAdmin = formRole === 'Hospital Administrator';
+    const empIdUpper = formEmpId.toUpperCase();
+    const nameUpper = formName.toUpperCase();
+    const roleUpper = formRole.toUpperCase();
+
+    const isDoc = 
+      empIdUpper.startsWith('DOC') ||
+      nameUpper.startsWith('DR.') || 
+      nameUpper.startsWith('DR ') || 
+      nameUpper.includes(' MD') || 
+      roleUpper.includes('DOCTOR') || 
+      roleUpper.includes('PHYSICIAN') || 
+      roleUpper.includes('MEDICAL SPECIALIST') ||
+      roleUpper.includes('MEDICAL OFFICER');
+
+    const isAdmin = formRole.toLowerCase().includes('admin');
 
     const initials = formName
-      .replace(/Dr\.|MD|RN|Nurse|,/gi, '')
+      .replace(/Dr\.|MD|RN|Nurse|,|Mr\.|Ms\.|Mrs\./gi, '')
       .trim()
       .split(' ')
       .filter(Boolean)
@@ -525,7 +560,7 @@ export default function AdminUsersPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search name, Accreditation, PRC, or Ward..."
+            placeholder="Search name, Accreditation, PRC, or Department..."
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
           />
         </div>
@@ -636,8 +671,8 @@ export default function AdminUsersPage() {
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-black uppercase text-[10px] tracking-wider">
                 <th className="py-3 px-4">Employee / Avatar</th>
                 <th className="py-3 px-3">Name & Title</th>
-                <th className="py-3 px-3">Role</th>
-                <th className="py-3 px-3">Department / Ward</th>
+                <th className="py-3 px-3">Position / Designation</th>
+                <th className="py-3 px-3">Department / Unit</th>
                 <th className="py-3 px-3">Accreditation / PRC No</th>
                 <th className="py-3 px-3">Employee ID</th>
                 {isAuthenticated && <th className="py-3 px-3 text-center">Action</th>}
@@ -666,12 +701,13 @@ export default function AdminUsersPage() {
                       )}
                     </td>
 
-                    {/* Role */}
+                    {/* Role / Position */}
                     <td className="py-3 px-3 whitespace-nowrap">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
                         staff.is_admin ? 'bg-slate-900 text-white' :
                         staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                        'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                        'bg-slate-100 text-slate-800 border border-slate-200'
                       }`}>
                         {staff.role}
                       </span>
@@ -820,7 +856,7 @@ export default function AdminUsersPage() {
 
             <div className="p-4 overflow-y-auto flex-1 space-y-2 text-xs">
               <p className="text-slate-500 font-semibold mb-2">
-                Palihug i-review ang mga na-extract nga Doctor/Nurse data ug Accreditation No. gikan sa imong Excel file:
+                Palihug i-review ang mga na-extract nga Personnel data, Position, ug Department gikan sa imong Excel file:
               </p>
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                 {parsedRows.slice(0, 15).map((row, i) => (
@@ -829,7 +865,9 @@ export default function AdminUsersPage() {
                       <div className="flex items-center space-x-2">
                         <span className="font-extrabold text-slate-900 text-xs">{row.name}</span>
                         <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
-                          row.is_doctor ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                          row.is_doctor ? 'bg-blue-100 text-blue-800' :
+                          row.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800' :
+                          'bg-slate-100 text-slate-800'
                         }`}>
                           {row.role}
                         </span>
@@ -977,35 +1015,87 @@ export default function AdminUsersPage() {
 
             <form onSubmit={handleSaveForm} className="p-5 space-y-4 text-xs">
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Full Name & Title (e.g. DR. ALEXANDER S HO. JR o Nurse Maria, RN):</label>
+                <label className="block text-slate-700 font-bold mb-1">Full Name & Title (e.g. MR. ISABELO B. CARATAO IV o MS. JILLIAN ISABEL COMPLETO LAPE):</label>
                 <input
                   type="text"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   required
-                  placeholder="e.g. DR. ALEXANDER S HO. JR"
+                  placeholder="e.g. MR. ISABELO B. CARATAO IV"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                
+                {/* Position / Role input with datalist */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Medical Role:</label>
-                  <select
+                  <label className="block text-slate-700 font-bold mb-1">Position / Designation:</label>
+                  <input
+                    type="text"
+                    list="role-suggestions"
                     value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as any)}
+                    onChange={(e) => setFormRole(e.target.value)}
+                    required
+                    placeholder="e.g. MEDICAL SPECIALIST / SOCIAL WELFARE OFFICER I"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Physician">Physician / Doctor (MD)</option>
-                    <option value="Resident Physician">Resident Physician</option>
-                    <option value="Staff Nurse">Staff Nurse (RN)</option>
-                    <option value="Head Nurse">Head Nurse</option>
-                    <option value="Charge Nurse">Charge Nurse</option>
-                    <option value="Anesthesiologist">Anesthesiologist</option>
-                    <option value="Respiratory Therapist">Respiratory Therapist</option>
-                    <option value="Security Officer">Security Officer</option>
-                    <option value="Hospital Administrator">Hospital Administrator</option>
-                  </select>
+                  />
+                  <datalist id="role-suggestions">
+                    <option value="MEDICAL SPECIALIST" />
+                    <option value="MEDICAL OFFICER III" />
+                    <option value="MEDICAL OFFICER IV" />
+                    <option value="Physician / Doctor (MD)" />
+                    <option value="Resident Physician" />
+                    <option value="NURSE I" />
+                    <option value="NURSE II" />
+                    <option value="Staff Nurse (RN)" />
+                    <option value="Head Nurse" />
+                    <option value="MIDWIFE I" />
+                    <option value="MIDWIFE II" />
+                    <option value="MEDICAL TECHNOLOGIST I" />
+                    <option value="PHARMACIST I" />
+                    <option value="SOCIAL WELFARE OFFICER I" />
+                    <option value="ADMINISTRATIVE OFFICER" />
+                    <option value="ADMINISTRATIVE AIDE" />
+                    <option value="LAB AIDE" />
+                    <option value="CLERK" />
+                    <option value="Hospital Administrator" />
+                  </datalist>
+                </div>
+
+                {/* Ward / Department input with datalist */}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Department / Unit / Ward:</label>
+                  <input
+                    type="text"
+                    list="dept-suggestions"
+                    value={formDept}
+                    onChange={(e) => setFormDept(e.target.value)}
+                    required
+                    placeholder="e.g. Medical Social Service Unit / Medical Section"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                  />
+                  <datalist id="dept-suggestions">
+                    <option value="Medical Section" />
+                    <option value="Medical Social Service Unit" />
+                    <option value="Admin and Info Unit" />
+                    <option value="Emergency Department (ER)" />
+                    <option value="ICU NEW ROOM" />
+                    <option value="MEDICAL WARD (WARD 4)" />
+                    <option value="WARD 5 (OB-GYN)" />
+                    <option value="WARD 6 (Nursery / Pedia)" />
+                    <option value="WARD 7 (Surgical)" />
+                    <option value="WARD 10 (Isolation)" />
+                    <option value="Outpatient Clinic (OPD)" />
+                    <option value="Pharmacy" />
+                    <option value="Laboratory" />
+                    <option value="Billing / Claims Section" />
+                    <option value="Cashier Section" />
+                    <option value="Radiology / X-Ray" />
+                    <option value="Dental Clinic" />
+                    <option value="Dietary / Nutrition" />
+                    <option value="Hospital Administration / IT" />
+                  </datalist>
                 </div>
 
                 <div>
@@ -1030,33 +1120,13 @@ export default function AdminUsersPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Ward / Section:</label>
-                  <select
-                    value={formDept}
-                    onChange={(e) => setFormDept(e.target.value as any)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Medical Section">Medical Section</option>
-                    <option value="Emergency Department (ER)">Emergency Department (ER)</option>
-                    <option value="ICU NEW ROOM">ICU NEW ROOM</option>
-                    <option value="MEDICAL WARD (WARD 4)">MEDICAL WARD (WARD 4)</option>
-                    <option value="WARD 5 (OB-GYN)">WARD 5 (OB-GYN)</option>
-                    <option value="WARD 6 (Nursery / Pedia)">WARD 6 (Nursery / Pedia)</option>
-                    <option value="WARD 7 (Surgical)">WARD 7 (Surgical)</option>
-                    <option value="WARD 10 (Isolation)">WARD 10 (Isolation)</option>
-                    <option value="Outpatient Clinic (OPD)">Outpatient Clinic (OPD)</option>
-                    <option value="Hospital Administration / IT">Hospital Administration / IT</option>
-                  </select>
-                </div>
-
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-700 font-bold mb-1">Employee ID:</label>
+                  <label className="block text-slate-700 font-bold mb-1">Employee ID (e.g. DOC10093 o POC1000003):</label>
                   <input
                     type="text"
                     value={formEmpId}
                     onChange={(e) => setFormEmpId(e.target.value)}
-                    placeholder="e.g. CPHB-MD-1001"
+                    placeholder="e.g. DOC10093 / POC1000003"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -1068,7 +1138,7 @@ export default function AdminUsersPage() {
                   type="text"
                   value={formSpecialization}
                   onChange={(e) => setFormSpecialization(e.target.value)}
-                  placeholder="e.g. Attending Physician / Emergency Resuscitation"
+                  placeholder="e.g. Attending Physician / Emergency Resuscitation / Social Work Services"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium focus:outline-none focus:border-blue-500"
                 />
               </div>

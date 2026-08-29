@@ -28,29 +28,75 @@ const STORAGE_KEY_CURRENT = 'cphb_current_staff_user_permanent_v1';
 const STORAGE_KEY_CUSTOM_LIST = 'cphb_hospital_staff_custom_v1';
 const STORAGE_KEY_ADMIN_PIN = 'cphb_admin_security_pin_v1';
 
+let inMemoryCloudPin: string = '1234';
+
 export class AdminAuthService {
   public static getPin(): string {
-    if (typeof window === 'undefined') return '1234';
+    if (typeof window === 'undefined') return inMemoryCloudPin || '1234';
     try {
-      return localStorage.getItem(STORAGE_KEY_ADMIN_PIN) || '1234';
+      return localStorage.getItem(STORAGE_KEY_ADMIN_PIN) || inMemoryCloudPin || '1234';
     } catch (e) {
-      return '1234';
+      return inMemoryCloudPin || '1234';
     }
   }
 
-  public static setPin(newPin: string) {
-    if (typeof window === 'undefined') return;
+  public static async fetchCloudPin(): Promise<string> {
     try {
-      localStorage.setItem(STORAGE_KEY_ADMIN_PIN, newPin.trim());
+      const res = await fetch('/api/staff', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.admin_pin) {
+          inMemoryCloudPin = json.admin_pin;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(STORAGE_KEY_ADMIN_PIN, json.admin_pin);
+          }
+          return json.admin_pin;
+        }
+      }
     } catch (e) {
-      console.warn('Could not save custom Admin PIN:', e);
+      console.warn('Could not fetch cloud PIN:', e);
+    }
+    return this.getPin();
+  }
+
+  public static async setPin(newPin: string) {
+    const clean = newPin.trim();
+    inMemoryCloudPin = clean;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY_ADMIN_PIN, clean);
+      } catch (e) {
+        console.warn('Could not save custom Admin PIN locally:', e);
+      }
+    }
+
+    // Sync to Cloud across all Incognito windows & devices
+    try {
+      await fetch('/api/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: clean }),
+      });
+    } catch (e) {
+      console.warn('Failed pushing PIN to /api/staff:', e);
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('emergency_audit_logs').insert({
+          event_type: 'ADMIN_PIN_SYNC',
+          actor_name: 'Hospital Administrator',
+          details: { pin: clean, updated_at: new Date().toISOString() },
+        });
+      } catch (e) {
+        console.warn('Failed pushing PIN to Supabase:', e);
+      }
     }
   }
 
   public static verifyPin(input: string): boolean {
     const current = this.getPin().trim();
     const clean = (input || '').trim();
-    // Strictly verify against the actual current PIN (No backdoor / default bypass!)
     return clean === current;
   }
 }
@@ -63,7 +109,9 @@ export class StaffService {
     if (this.isCloudSyncInitialized) return;
     this.isCloudSyncInitialized = true;
 
+    // Pull latest Staff & PIN from cloud
     this.fetchStaffFromCloud();
+    AdminAuthService.fetchCloudPin();
 
     if (supabase) {
       try {
@@ -77,13 +125,13 @@ export class StaffService {
               table: 'emergency_audit_logs',
             },
             (payload) => {
-              if (
-                payload.new &&
-                payload.new.event_type === 'STAFF_DIRECTORY_SYNC' &&
-                payload.new.details &&
-                Array.isArray(payload.new.details.staff_list)
-              ) {
+              if (payload.new && payload.new.event_type === 'STAFF_DIRECTORY_SYNC' && payload.new.details?.staff_list) {
                 this.applyCloudStaff(payload.new.details.staff_list);
+              }
+              if (payload.new && payload.new.event_type === 'ADMIN_PIN_SYNC' && payload.new.details?.pin) {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem(STORAGE_KEY_ADMIN_PIN, payload.new.details.pin);
+                }
               }
             }
           )
@@ -99,6 +147,9 @@ export class StaffService {
       const res = await fetch('/api/staff', { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
+        if (json.admin_pin && typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY_ADMIN_PIN, json.admin_pin);
+        }
         if (json.success && Array.isArray(json.staff) && json.staff.length > 0) {
           this.applyCloudStaff(json.staff);
           return this.getAllStaff();
@@ -110,7 +161,7 @@ export class StaffService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('emergency_audit_logs')
           .select('details')
           .eq('event_type', 'STAFF_DIRECTORY_SYNC')
@@ -133,7 +184,6 @@ export class StaffService {
   public static applyCloudStaff(cloudList: HospitalStaff[]) {
     if (typeof window === 'undefined') return;
     try {
-      // Ensure Admin staff is always preserved
       const hasAdmin = cloudList.some(s => s.is_admin);
       const fullList = hasAdmin ? cloudList : [...cloudList, DEFAULT_CPHB_STAFF[0]];
       localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(fullList));

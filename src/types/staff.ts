@@ -7,7 +7,8 @@ export type StaffRole =
   | 'Anesthesiologist'
   | 'Respiratory Therapist'
   | 'Security Officer'
-  | 'Hospital Administrator';
+  | 'Hospital Administrator'
+  | string;
 
 export type HospitalDepartment = 
   | 'Emergency Department (ER)'
