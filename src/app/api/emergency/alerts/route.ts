@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         const formatted = data.map(d => ({
           ...d,
           code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
-          patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
+          patient_details: d.patient_details || null,
         }));
         return NextResponse.json({ success: true, alerts: formatted });
       }
@@ -95,11 +95,10 @@ export async function GET(req: NextRequest) {
 
     let activeAlert: EmergencyAlert | null = null;
     if (data) {
-      const patient = data.patient_details || IHOMISService.findPatientByLocation(data.location_text);
       activeAlert = {
         ...data,
         code_details: EMERGENCY_CODES[data.code_id] || EMERGENCY_CODES.code_blue,
-        patient_details: patient,
+        patient_details: data.patient_details || null,
       };
       inMemoryActiveAlertsByHosp[hospitalId] = activeAlert;
     } else {
@@ -127,7 +126,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'TRIGGER') {
       const alertUuid = generateUUID();
-      const patient = body.patient_details || IHOMISService.findPatientByLocation(body.location_text);
+      const patient = body.patient_details || null;
 
       const newAlertRecord = {
         id: alertUuid,

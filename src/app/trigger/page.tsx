@@ -163,23 +163,14 @@ function TriggerPadContent() {
     }
   }, [hrnParam, hospitalLocations]);
 
-  // Manual Location selection (only if NO hrnParam was passed)
+  // Manual Location selection
   const handleLocationChange = (newIdx: number) => {
     setSelectedLocationIndex(newIdx);
     setCustomRoom('');
-    if (!hrnParam && hospitalLocations[newIdx]) {
-      const loc = hospitalLocations[newIdx];
-      const p = IHOMISService.findPatientByLocation(loc.room_bed);
-      setMatchedPatient(p);
-    }
   };
 
   const handleCustomRoomChange = (val: string) => {
     setCustomRoom(val);
-    if (!hrnParam) {
-      const p = IHOMISService.findPatientByLocation(val);
-      setMatchedPatient(p);
-    }
   };
 
   const activeCodeObj = EMERGENCY_CODES[selectedCode] || EMERGENCY_CODES.code_blue;
@@ -188,14 +179,12 @@ function TriggerPadContent() {
     building: 'Main Complex',
     floor: 'Ground Floor',
     unit_ward: 'Emergency Department',
-    room_bed: 'Main Room',
+    room_bed: 'ER Trauma Bay 1',
   };
   
-  const finalLocationString = matchedPatient
-    ? `${matchedPatient.ward_name} - ${customRoom || matchedPatient.room_bed}`
-    : customRoom 
-      ? `${activeLocation.floor} • ${activeLocation.unit_ward} - ${customRoom}`
-      : `${activeLocation.floor} • ${activeLocation.unit_ward} - ${activeLocation.room_bed}`;
+  const finalLocationString = customRoom.trim()
+    ? `${activeLocation.floor} • ${activeLocation.unit_ward} - ${customRoom.trim()}`
+    : `${activeLocation.floor} • ${activeLocation.unit_ward} - ${activeLocation.room_bed}`;
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
