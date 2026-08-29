@@ -162,10 +162,12 @@ export class AdminAuthService {
       return true;
     }
 
-    // Fallback only if local storage is empty
+    // Fallback path for fresh Incognito / Mobile:
     try {
       const cloudPin = (await this.fetchCloudPin()).trim();
-      if (clean === cloudPin || clean === '1234') {
+      const currentLocal = this.getPin().trim();
+
+      if (clean === cloudPin || clean === '1234' || currentLocal === '1234' || cloudPin === '1234') {
         if (clean !== '1234') {
           this.setPin(clean).catch(() => {});
         }
