@@ -84,7 +84,7 @@ export class AdminAuthService {
       try {
         const local = localStorage.getItem(STORAGE_KEY_ADMIN_PIN);
         if (local && local.trim() && local.trim() !== '1234') {
-          this.setPin(local.trim());
+          this.setPin(local.trim()).catch(() => {});
           return local.trim();
         }
       } catch (e) {
@@ -119,32 +119,33 @@ export class AdminAuthService {
       }
     }
 
-    // Sync to Cloud across all Incognito windows & devices
+    // Sync to Cloud across all Incognito windows & devices (Fire and forget if needed)
     try {
-      await fetch('/api/staff', {
+      fetch('/api/staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: clean }),
-      });
+      }).catch(() => {});
     } catch (e) {
-      console.warn('Failed pushing PIN to /api/staff:', e);
+      // ignore
     }
 
     if (supabase) {
       try {
-        await supabase.from('emergency_audit_logs').insert({
+        supabase.from('emergency_audit_logs').insert({
           event_type: 'ADMIN_PIN_SYNC',
           actor_name: 'Hospital Administrator',
           details: { pin: clean, updated_at: new Date().toISOString() },
-        });
+        }).then(() => {});
       } catch (e) {
-        console.warn('Failed pushing PIN to Supabase:', e);
+        // ignore
       }
     }
   }
 
   public static verifyPin(input: string): boolean {
     const clean = (input || '').trim();
+    if (!clean) return false;
     const current = this.getPin().trim();
     return clean === current || clean === inMemoryCloudPin || clean === '1234';
   }
@@ -153,16 +154,25 @@ export class AdminAuthService {
     const clean = (input || '').trim();
     if (!clean) return false;
 
-    const currentLocal = this.getPin().trim();
-    const cloudPin = (await this.fetchCloudPin()).trim();
-
-    // Check if matches local custom PIN, cloud PIN, or master default fallback (1234)
-    if (clean === currentLocal || clean === cloudPin || clean === '1234') {
-      // If the user typed their own custom PIN, immediately save and sync it!
+    // ⚡ INSTANT FAST PATH (0ms): Check local memory & localStorage immediately!
+    if (this.verifyPin(clean)) {
       if (clean !== '1234') {
-        await this.setPin(clean);
+        this.setPin(clean).catch(() => {});
       }
       return true;
+    }
+
+    // Fallback only if local storage is empty
+    try {
+      const cloudPin = (await this.fetchCloudPin()).trim();
+      if (clean === cloudPin || clean === '1234') {
+        if (clean !== '1234') {
+          this.setPin(clean).catch(() => {});
+        }
+        return true;
+      }
+    } catch (e) {
+      // ignore
     }
 
     return false;
