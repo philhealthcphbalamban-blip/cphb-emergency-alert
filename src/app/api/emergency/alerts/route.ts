@@ -4,7 +4,12 @@ import { EmergencyAlert, AlertResponder, CodeId, AlertStatus } from '@/types/eme
 import { EMERGENCY_CODES } from '@/lib/constants';
 import { IHOMISService } from '@/lib/ihomisService';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vptgxwbsyccgamcuunya.supabase.co';
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vptgxwbsyccgamcuunya.supabase.co';
+// Auto-correct any typo with double 'y'
+const supabaseUrl = rawUrl.includes('vptgxwbysyccgamcuunya')
+  ? 'https://vptgxwbsyccgamcuunya.supabase.co'
+  : (rawUrl || 'https://vptgxwbsyccgamcuunya.supabase.co');
+
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwdGd4d2JzeWNjZ2FtY3V1bnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NjYxMDAsImV4cCI6MjEwMzU0MjEwMH0.tj58oXqpJy-MT5AhZtmpigk7dWFwdTiDEs8R9QWj3FY';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -102,15 +107,20 @@ export async function POST(req: NextRequest) {
 
     if (action === 'RESOLVE') {
       const resolvedAt = new Date().toISOString();
-      const { error } = await supabase
-        .from('emergency_alerts')
-        .update({
-          status: 'RESOLVED',
-          resolved_at: resolvedAt,
-          resolved_by_name: body.resolved_by_name || 'Hospital Admin',
-          resolution_notes: body.resolution_notes || 'Resolved via Command Center',
-        })
-        .eq('id', body.alert_id);
+      let query = supabase.from('emergency_alerts').update({
+        status: 'RESOLVED',
+        resolved_at: resolvedAt,
+        resolved_by_name: body.resolved_by_name || 'Hospital Admin',
+        resolution_notes: body.resolution_notes || 'Resolved via Command Center',
+      });
+
+      if (body.alert_id && body.alert_id !== 'any') {
+        query = query.eq('id', body.alert_id);
+      } else {
+        query = query.in('status', ['ACTIVE', 'RESPONDING']);
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error('Error resolving alert in Supabase:', error);
@@ -118,7 +128,6 @@ export async function POST(req: NextRequest) {
       }
 
       await supabase.from('emergency_audit_logs').insert({
-        alert_id: body.alert_id,
         event_type: 'RESOLVED',
         actor_name: body.resolved_by_name || 'Hospital Admin',
         details: { notes: body.resolution_notes, resolved_at: resolvedAt },
