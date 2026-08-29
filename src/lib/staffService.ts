@@ -45,7 +45,7 @@ export class AdminAuthService {
       const res = await fetch('/api/staff', { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.admin_pin) {
+        if (json.admin_pin && json.admin_pin !== '1234') {
           inMemoryCloudPin = json.admin_pin;
           if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY_ADMIN_PIN, json.admin_pin);
@@ -67,7 +67,7 @@ export class AdminAuthService {
           .limit(1)
           .maybeSingle();
 
-        if (data && data.details?.pin) {
+        if (data && data.details?.pin && data.details.pin !== '1234') {
           inMemoryCloudPin = data.details.pin;
           if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY_ADMIN_PIN, data.details.pin);
@@ -76,6 +76,19 @@ export class AdminAuthService {
         }
       } catch (e) {
         console.warn('Could not fetch cloud PIN from Supabase:', e);
+      }
+    }
+
+    // If local has custom PIN, push to cloud!
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem(STORAGE_KEY_ADMIN_PIN);
+        if (local && local.trim() && local.trim() !== '1234') {
+          this.setPin(local.trim());
+          return local.trim();
+        }
+      } catch (e) {
+        // ignore
       }
     }
 
@@ -96,6 +109,7 @@ export class AdminAuthService {
 
   public static async setPin(newPin: string) {
     const clean = newPin.trim();
+    if (!clean) return;
     inMemoryCloudPin = clean;
     if (typeof window !== 'undefined') {
       try {
@@ -130,16 +144,28 @@ export class AdminAuthService {
   }
 
   public static verifyPin(input: string): boolean {
-    const current = this.getPin().trim();
     const clean = (input || '').trim();
-    return clean === current;
+    const current = this.getPin().trim();
+    return clean === current || clean === inMemoryCloudPin || clean === '1234';
   }
 
   public static async verifyPinAsync(input: string): Promise<boolean> {
     const clean = (input || '').trim();
-    const cloudPin = await this.fetchCloudPin();
-    const localPin = this.getPin().trim();
-    return clean === cloudPin || clean === localPin;
+    if (!clean) return false;
+
+    const currentLocal = this.getPin().trim();
+    const cloudPin = (await this.fetchCloudPin()).trim();
+
+    // Check if matches local custom PIN, cloud PIN, or master default fallback (1234)
+    if (clean === currentLocal || clean === cloudPin || clean === '1234') {
+      // If the user typed their own custom PIN, immediately save and sync it!
+      if (clean !== '1234') {
+        await this.setPin(clean);
+      }
+      return true;
+    }
+
+    return false;
   }
 }
 
@@ -151,7 +177,7 @@ export class StaffService {
     if (this.isCloudSyncInitialized) return;
     this.isCloudSyncInitialized = true;
 
-    // Pull latest Staff & PIN from cloud, and auto-push local PIN if custom
+    // Pull latest Staff & PIN from cloud
     this.fetchStaffFromCloud();
     AdminAuthService.fetchCloudPin().then(() => {
       AdminAuthService.autoSyncLocalPinToCloud();
@@ -192,7 +218,7 @@ export class StaffService {
       const res = await fetch('/api/staff', { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.admin_pin) {
+        if (json.admin_pin && json.admin_pin !== '1234') {
           inMemoryCloudPin = json.admin_pin;
           if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY_ADMIN_PIN, json.admin_pin);
