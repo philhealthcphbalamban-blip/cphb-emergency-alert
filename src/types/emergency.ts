@@ -29,6 +29,7 @@ export interface EmergencyCode {
 
 export interface HospitalLocation {
   id: string;
+  hospital_id?: string;
   building: string;
   floor: string;
   unit_ward: string;
@@ -48,6 +49,7 @@ export interface AlertResponder {
 
 export interface EmergencyAlert {
   id: string;
+  hospital_id?: string;
   code_id: CodeId;
   code_details?: EmergencyCode;
   location_id?: string;

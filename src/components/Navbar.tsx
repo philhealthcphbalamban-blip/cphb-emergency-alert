@@ -21,17 +21,23 @@ import { audioEngine } from '@/lib/audioEngine';
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, CPHB_STAFF_MEMBERS } from '@/lib/staffService';
 import { StaffSwitchModal } from '@/components/StaffSwitchModal';
+import { HospitalInfo } from '@/types/hospital';
+import { HospitalService } from '@/lib/hospitalService';
+import { HospitalSwitchModal } from '@/components/HospitalSwitchModal';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const [time, setTime] = useState<string>('');
   const [currentStaff, setCurrentStaff] = useState<HospitalStaff>(CPHB_STAFF_MEMBERS[0]);
+  const [currentHospital, setCurrentHospital] = useState<HospitalInfo>(HospitalService.getActiveHospital());
   const [modalOpen, setModalOpen] = useState(false);
+  const [hospitalModalOpen, setHospitalModalOpen] = useState(false);
   const [lanCopied, setLanCopied] = useState(false);
 
   useEffect(() => {
     StaffService.initCloudSync();
     setCurrentStaff(StaffService.getCurrentStaff());
+    setCurrentHospital(HospitalService.getActiveHospital());
 
     const handleStaffChange = (e: any) => {
       if (e.detail) setCurrentStaff(e.detail);
@@ -39,8 +45,13 @@ export const Navbar: React.FC = () => {
     const handleDirUpdate = () => {
       setCurrentStaff(StaffService.getCurrentStaff());
     };
+    const handleHospitalChange = (e: any) => {
+      if (e.detail) setCurrentHospital(e.detail);
+    };
+
     window.addEventListener('cphb_staff_changed', handleStaffChange);
     window.addEventListener('cphb_staff_directory_updated', handleDirUpdate);
+    window.addEventListener('cph_hospital_changed', handleHospitalChange);
 
     const updateTime = () => {
       const now = new Date();
@@ -137,6 +148,24 @@ export const Navbar: React.FC = () => {
           {/* Status Indicators, LAN Share & Active Staff Switcher */}
           <div className="flex items-center space-x-2">
             
+            {/* Hospital Switcher Button */}
+            <button
+              onClick={() => setHospitalModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-xs font-bold text-blue-900 transition shadow-sm"
+              title="Click to switch active Cebu Provincial Hospital"
+            >
+              <div 
+                className="h-5 w-5 rounded-lg flex items-center justify-center font-black text-[9px] text-white shadow-xs shrink-0"
+                style={{ backgroundColor: currentHospital.colorHex }}
+              >
+                {currentHospital.code.slice(0, 3)}
+              </div>
+              <span className="font-extrabold hidden sm:inline-block">
+                {currentHospital.shortName}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+            </button>
+
             {/* Share LAN IP Button */}
             <button
               onClick={copyLanUrl}
@@ -234,6 +263,17 @@ export const Navbar: React.FC = () => {
         onClose={() => setModalOpen(false)}
         currentStaff={currentStaff}
         onSelectStaff={handleSelectStaff}
+      />
+
+      {/* Hospital Switcher Modal */}
+      <HospitalSwitchModal
+        isOpen={hospitalModalOpen}
+        onClose={() => setHospitalModalOpen(false)}
+        currentHospital={currentHospital}
+        onSelectHospital={(hosp) => {
+          HospitalService.setActiveHospital(hosp);
+          setCurrentHospital(hosp);
+        }}
       />
     </>
   );

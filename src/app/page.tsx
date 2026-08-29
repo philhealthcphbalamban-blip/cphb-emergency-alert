@@ -25,10 +25,12 @@ import { EmergencyAlert } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
 import { EMERGENCY_CODES } from '@/lib/constants';
 import { IHOMISService } from '@/lib/ihomisService';
+import { HospitalService } from '@/lib/hospitalService';
 import { audioEngine } from '@/lib/audioEngine';
 import { IHOMISPatientCard } from '@/components/IHOMISPatientCard';
 
 export default function CommandHubPage() {
+  const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
   const [activeAlert, setActiveAlert] = useState<EmergencyAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [testTriggering, setTestTriggering] = useState(false);
@@ -37,6 +39,13 @@ export default function CommandHubPage() {
   useEffect(() => {
     EmergencyService.init();
     IHOMISService.initCloudSync();
+
+    setActiveHospital(HospitalService.getActiveHospital());
+
+    const handleHospChange = (e: any) => {
+      if (e.detail) setActiveHospital(e.detail);
+    };
+    window.addEventListener('cph_hospital_changed', handleHospChange);
 
     EmergencyService.getActiveAlert().then((alert) => {
       setActiveAlert(alert);
@@ -55,27 +64,28 @@ export default function CommandHubPage() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      window.removeEventListener('cph_hospital_changed', handleHospChange);
+    };
   }, []);
 
   const handleQuickSimulation = async (codeId: 'code_blue' | 'code_baby_blue') => {
     setTestTriggering(true);
     audioEngine.playChime();
     
-    const locations = [
-      'ICU NEW ROOM - ICU01',
-      'ICU NEW ROOM (NICU) - TEMPBED4-ICU4',
-    ];
-    const loc = codeId === 'code_baby_blue' ? locations[1] : locations[0];
+    const locations = HospitalService.getLocationsForHospital(activeHospital.id);
+    const loc = locations[0]?.room_bed || 'ICU NEW ROOM - ICU01';
 
     await EmergencyService.triggerAlert({
+      hospital_id: activeHospital.id,
       code_id: codeId,
-      location_text: loc,
+      location_text: `${locations[0]?.unit_ward || 'ICU'} - ${loc}`,
       triggered_by_name: 'Nurse Station Staff',
       triggered_by_role: 'Triage Nurse',
     });
 
-    setTestTriggering(false);
+    setTimeout(() => setTestTriggering(false), 2000);
   };
 
   const handleResolveActive = async () => {
@@ -91,7 +101,7 @@ export default function CommandHubPage() {
   };
 
   return (
-    <div className="w-full max-w-[98%] mx-auto px-3 sm:px-6 py-6 space-y-6">
+    <div className="w-full max-w-[98%] mx-auto px-4 sm:px-6 py-6 space-y-6">
       
       {/* Top Header Card */}
       <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -101,11 +111,11 @@ export default function CommandHubPage() {
               Hospital Command Dashboard
             </h1>
             <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-black text-blue-700 border border-blue-200">
-              CPHB Live
+              {activeHospital.code} Live
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Cebu Provincial Hospital - Balamban • Rapid Code Dispatch & iHOMIS Plus Realtime Integration
+            {activeHospital.name} • Rapid Code Dispatch & Emergency Network
           </p>
         </div>
 
@@ -143,8 +153,10 @@ export default function CommandHubPage() {
             <Building className="h-4 w-4 text-blue-600" />
             <span>Monitored Wards</span>
           </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">11 Wards</div>
-          <span className="text-[10px] text-blue-700 font-bold">ICU, NICU, ER, Wards 1-5, OR/DR</span>
+          <div className="text-3xl font-black text-slate-900 mt-1">
+            {HospitalService.getLocationsForHospital(activeHospital.id).length > 20 ? '11 Wards' : '8 Wards'}
+          </div>
+          <span className="text-[10px] text-blue-700 font-bold">{activeHospital.shortName} Monitored</span>
         </Link>
 
         {/* Card 2: Emergency Bed Locations */}
@@ -153,8 +165,8 @@ export default function CommandHubPage() {
             <Bed className="h-4 w-4 text-emerald-600" />
             <span>Bed Locations</span>
           </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">378 Beds</div>
-          <span className="text-[10px] text-emerald-700 font-bold">53 Rooms & Triage Bays Monitored</span>
+          <div className="text-3xl font-black text-slate-900 mt-1">{activeHospital.bedCapacity} Beds</div>
+          <span className="text-[10px] text-emerald-700 font-bold">{activeHospital.municipality}</span>
         </Link>
 
         {/* Card 3: Rapid Response Teams */}

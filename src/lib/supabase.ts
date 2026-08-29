@@ -3,6 +3,7 @@ import { EmergencyAlert, AlertResponder, CodeId, AlertStatus } from '@/types/eme
 import { IHOMISPatient } from '@/types/ihomis';
 import { EMERGENCY_CODES } from './constants';
 import { IHOMISService } from './ihomisService';
+import { HospitalService } from './hospitalService';
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vptgxwbsyccgamcuunya.supabase.co').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwdGd4d2JzeWNjZ2FtY3V1bnlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NjYxMDAsImV4cCI6MjEwMzU0MjEwMH0.tj58oXqpJy-MT5AhZtmpigk7dWFwdTiDEs8R9QWj3FY').trim();
@@ -140,10 +141,11 @@ export class EmergencyService {
     });
   }
 
-  // Get current active alert via REST API with Supabase fallback
-  public static async getActiveAlert(): Promise<EmergencyAlert | null> {
+  public static async getActiveAlert(hospitalId?: string): Promise<EmergencyAlert | null> {
+    const hid = hospitalId || HospitalService.getActiveHospital().id;
+
     try {
-      const res = await fetch('/api/emergency/alerts', { cache: 'no-store' });
+      const res = await fetch(`/api/emergency/alerts?hospital_id=${hid}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.activeAlert) {
@@ -159,13 +161,19 @@ export class EmergencyService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('emergency_alerts')
           .select('*, responders:alert_responders(*)')
           .in('status', ['ACTIVE', 'RESPONDING'])
-          .order('triggered_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('triggered_at', { ascending: false });
+
+        if (hid === 'cphb') {
+          query = query.or(`hospital_id.eq.${hid},hospital_id.is.null`);
+        } else {
+          query = query.eq('hospital_id', hid);
+        }
+
+        const { data, error } = await query.limit(1).maybeSingle();
 
         if (data && !error) {
           const patient = data.patient_details || IHOMISService.findPatientByLocation(data.location_text);
@@ -183,16 +191,17 @@ export class EmergencyService {
     return null;
   }
 
-  // Get all alerts history with REST API, Supabase, and localStorage fallback
-  public static async getAllAlerts(): Promise<EmergencyAlert[]> {
+  public static async getAllAlerts(hospitalId?: string): Promise<EmergencyAlert[]> {
+    const hid = hospitalId || HospitalService.getActiveHospital().id;
+
     try {
-      const res = await fetch('/api/emergency/alerts?all=true', { cache: 'no-store' });
+      const res = await fetch(`/api/emergency/alerts?all=true&hospital_id=${hid}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.alerts) && json.alerts.length > 0) {
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify(json.alerts));
+              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(json.alerts));
             } catch (e) {}
           }
           return json.alerts;
@@ -202,10 +211,18 @@ export class EmergencyService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('emergency_alerts')
           .select('*, responders:alert_responders(*)')
           .order('triggered_at', { ascending: false });
+
+        if (hid === 'cphb') {
+          query = query.or(`hospital_id.eq.${hid},hospital_id.is.null`);
+        } else {
+          query = query.eq('hospital_id', hid);
+        }
+
+        const { data, error } = await query;
 
         if (data && !error && data.length > 0) {
           const list = data.map(d => ({
@@ -215,7 +232,7 @@ export class EmergencyService {
           }));
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify(list));
+              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(list));
             } catch (e) {}
           }
           return list;
@@ -227,7 +244,7 @@ export class EmergencyService {
 
     if (typeof window !== 'undefined') {
       try {
-        const stored = localStorage.getItem('cphb_emergency_history_v2');
+        const stored = localStorage.getItem(`cph_emergency_history_${hid}`);
         if (stored) {
           return JSON.parse(stored);
         }
@@ -237,14 +254,15 @@ export class EmergencyService {
     return [];
   }
 
-  // Trigger a new emergency code via REST API (Guaranteed cross-device synchronization)
   public static async triggerAlert(params: {
+    hospital_id?: string;
     code_id: CodeId;
     location_text: string;
     triggered_by_name: string;
     triggered_by_role: string;
     patient_details?: IHOMISPatient | null;
   }): Promise<EmergencyAlert> {
+    const hid = params.hospital_id || HospitalService.getActiveHospital().id;
     const patient = params.patient_details || IHOMISService.findPatientByLocation(params.location_text);
 
     try {
@@ -253,6 +271,7 @@ export class EmergencyService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'TRIGGER',
+          hospital_id: hid,
           code_id: params.code_id,
           location_text: params.location_text,
           triggered_by_name: params.triggered_by_name,
@@ -267,8 +286,8 @@ export class EmergencyService {
           this.lastAlertId = json.alert.id;
           if (typeof window !== 'undefined') {
             try {
-              const current = JSON.parse(localStorage.getItem('cphb_emergency_history_v2') || '[]');
-              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify([json.alert, ...current.filter((x: any) => x.id !== json.alert.id)]));
+              const current = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
+              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify([json.alert, ...current.filter((x: any) => x.id !== json.alert.id)]));
             } catch (e) {}
           }
           this.notifyListeners(json.alert, 'TRIGGERED');
@@ -279,10 +298,10 @@ export class EmergencyService {
       console.warn('Failed triggering alert via REST API, attempting direct Supabase:', e);
     }
 
-    // Direct Supabase Fallback
     const alertUuid = generateUUID();
     const newAlert: EmergencyAlert = {
       id: alertUuid,
+      hospital_id: hid,
       code_id: params.code_id,
       code_details: EMERGENCY_CODES[params.code_id] || EMERGENCY_CODES.code_blue,
       location_text: params.location_text,
@@ -298,33 +317,33 @@ export class EmergencyService {
       try {
         await supabase.from('emergency_alerts').insert({
           id: alertUuid,
-          code_id: newAlert.code_id,
-          location_text: newAlert.location_text,
-          status: newAlert.status,
-          triggered_by_name: newAlert.triggered_by_name,
-          triggered_by_role: newAlert.triggered_by_role,
+          hospital_id: hid,
+          code_id: params.code_id,
+          location_text: params.location_text,
+          status: 'ACTIVE',
+          triggered_by_name: params.triggered_by_name,
+          triggered_by_role: params.triggered_by_role,
           triggered_at: newAlert.triggered_at,
           patient_id_optional: patient?.hrn || null,
-          patient_details: patient || null,
+          patient_details: patient,
         });
       } catch (e) {
-        console.error('Direct Supabase insert error:', e);
+        console.error('Supabase trigger error:', e);
       }
     }
 
     if (typeof window !== 'undefined') {
       try {
-        const current = JSON.parse(localStorage.getItem('cphb_emergency_history_v2') || '[]');
-        localStorage.setItem('cphb_emergency_history_v2', JSON.stringify([newAlert, ...current.filter((x: any) => x.id !== newAlert.id)]));
+        const current = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
+        localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify([newAlert, ...current.filter((x: any) => x.id !== newAlert.id)]));
       } catch (e) {}
     }
 
-    this.lastAlertId = newAlert.id;
+    this.lastAlertId = alertUuid;
     this.notifyListeners(newAlert, 'TRIGGERED');
     return newAlert;
   }
 
-  // Acknowledge & add responder
   public static async addResponder(params: {
     alert_id: string;
     responder_name: string;

@@ -15,13 +15,13 @@ import {
   Check,
   UserCheck
 } from 'lucide-react';
-import { EMERGENCY_CODES, INITIAL_LOCATIONS } from '@/lib/constants';
-import { CodeId } from '@/types/emergency';
+import { EMERGENCY_CODES } from '@/lib/constants';
+import { CodeId, HospitalLocation } from '@/types/emergency';
 import { IHOMISPatient } from '@/types/ihomis';
 import { IHOMISService } from '@/lib/ihomisService';
-import { IHOMISPatientCard } from '@/components/IHOMISPatientCard';
 import { EmergencyService } from '@/lib/supabase';
 import { StaffService } from '@/lib/staffService';
+import { HospitalService } from '@/lib/hospitalService';
 import { audioEngine } from '@/lib/audioEngine';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -33,6 +33,10 @@ function TriggerPadContent() {
   const hrnParam = searchParams.get('hrn');
   const roomParam = searchParams.get('room');
   const wardParam = searchParams.get('ward');
+
+  // Active Hospital
+  const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
+  const [hospitalLocations, setHospitalLocations] = useState<HospitalLocation[]>(HospitalService.getLocationsForHospital());
 
   // Active Staff Member
   const currentStaff = StaffService.getCurrentStaff();
@@ -52,19 +56,41 @@ function TriggerPadContent() {
   // iHOMIS Matched Patient State
   const [matchedPatient, setMatchedPatient] = useState<IHOMISPatient | null>(null);
 
-  // Auto-detect on staff change
+  // Auto-detect on hospital or staff change
+  useEffect(() => {
+    const handleHospChange = (e: any) => {
+      if (e.detail) {
+        setActiveHospital(e.detail);
+        const locs = HospitalService.getLocationsForHospital(e.detail.id);
+        setHospitalLocations(locs);
+        setSelectedLocationIndex(0);
+        setCustomRoom('');
+      }
+    };
+    const handleLocsUpdate = () => {
+      setHospitalLocations(HospitalService.getLocationsForHospital());
+    };
+
+    window.addEventListener('cph_hospital_changed', handleHospChange);
+    window.addEventListener('cph_locations_updated', handleLocsUpdate);
+
+    return () => {
+      window.removeEventListener('cph_hospital_changed', handleHospChange);
+      window.removeEventListener('cph_locations_updated', handleLocsUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     const handleStaffChange = (e: any) => {
       if (e.detail) {
         setStaffName(e.detail.name);
         setStaffRole(`${e.detail.role} (${e.detail.department.split(' ')[0]})`);
 
-        // If no HRN param, auto-set location to the staff's department!
         if (!hrnParam) {
           const dept = e.detail.department.toLowerCase();
-          const foundIdx = INITIAL_LOCATIONS.findIndex(loc => {
+          const foundIdx = hospitalLocations.findIndex(loc => {
             const locWard = loc.unit_ward.toLowerCase();
-            return (
+            return dept && locWard && (
               (dept.includes('ward 4') && locWard.includes('ward 4')) ||
               (dept.includes('ward 5') && locWard.includes('ward 5')) ||
               (dept.includes('ward 6') && locWard.includes('ward 6')) ||
@@ -81,7 +107,7 @@ function TriggerPadContent() {
 
     window.addEventListener('cphb_staff_changed', handleStaffChange);
     return () => window.removeEventListener('cphb_staff_changed', handleStaffChange);
-  }, [hrnParam]);
+  }, [hrnParam, hospitalLocations]);
 
   // Initial Load & Direct HRN Patient Auto-Detection
   useEffect(() => {
@@ -93,8 +119,8 @@ function TriggerPadContent() {
         setMatchedPatient(p);
         setCustomRoom(p.room_bed);
 
-        // Find exact matching location in INITIAL_LOCATIONS
-        const idx = INITIAL_LOCATIONS.findIndex(loc => {
+        // Find exact matching location in hospitalLocations
+        const idx = hospitalLocations.findIndex(loc => {
           const locRoom = loc.room_bed.toLowerCase().trim();
           const pRoom = p.room_bed.toLowerCase().trim();
           const locWard = loc.unit_ward.toLowerCase().trim();
@@ -118,7 +144,7 @@ function TriggerPadContent() {
     } else {
       // Default to initial location match based on staff department
       const dept = currentStaff.department.toLowerCase();
-      const foundIdx = INITIAL_LOCATIONS.findIndex(loc => {
+      const foundIdx = hospitalLocations.findIndex(loc => {
         const locWard = loc.unit_ward.toLowerCase();
         return (
           (dept.includes('ward 4') && locWard.includes('ward 4')) ||
@@ -131,18 +157,18 @@ function TriggerPadContent() {
 
       const targetIdx = foundIdx !== -1 ? foundIdx : 0;
       setSelectedLocationIndex(targetIdx);
-      const targetLookup = INITIAL_LOCATIONS[targetIdx].room_bed;
+      const targetLookup = hospitalLocations[targetIdx]?.room_bed || '';
       const p = IHOMISService.findPatientByLocation(targetLookup);
       setMatchedPatient(p);
     }
-  }, [hrnParam]);
+  }, [hrnParam, hospitalLocations]);
 
   // Manual Location selection (only if NO hrnParam was passed)
   const handleLocationChange = (newIdx: number) => {
     setSelectedLocationIndex(newIdx);
     setCustomRoom('');
-    if (!hrnParam) {
-      const loc = INITIAL_LOCATIONS[newIdx];
+    if (!hrnParam && hospitalLocations[newIdx]) {
+      const loc = hospitalLocations[newIdx];
       const p = IHOMISService.findPatientByLocation(loc.room_bed);
       setMatchedPatient(p);
     }
@@ -157,7 +183,13 @@ function TriggerPadContent() {
   };
 
   const activeCodeObj = EMERGENCY_CODES[selectedCode] || EMERGENCY_CODES.code_blue;
-  const activeLocation = INITIAL_LOCATIONS[selectedLocationIndex] || INITIAL_LOCATIONS[0];
+  const activeLocation = hospitalLocations[selectedLocationIndex] || hospitalLocations[0] || {
+    id: 'default',
+    building: 'Main Complex',
+    floor: 'Ground Floor',
+    unit_ward: 'Emergency Department',
+    room_bed: 'Main Room',
+  };
   
   const finalLocationString = matchedPatient
     ? `${matchedPatient.ward_name} - ${customRoom || matchedPatient.room_bed}`
@@ -185,6 +217,7 @@ function TriggerPadContent() {
 
     try {
       await EmergencyService.triggerAlert({
+        hospital_id: activeHospital.id,
         code_id: selectedCode,
         location_text: finalLocationString,
         triggered_by_name: staffName,
@@ -368,7 +401,7 @@ function TriggerPadContent() {
                           setSelectedLocationIndex(0);
                           setCustomRoom('');
                         } else {
-                          const foundIdx = INITIAL_LOCATIONS.findIndex(l => 
+                          const foundIdx = hospitalLocations.findIndex(l => 
                             l.unit_ward.toLowerCase().includes(w.key.toLowerCase())
                           );
                           if (foundIdx !== -1) {
@@ -388,16 +421,16 @@ function TriggerPadContent() {
 
               <div>
                 <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1.5">
-                  Select Ward & Room (58 Official iHOMIS+ Locations)
+                  Select Ward & Room ({hospitalLocations.length} Monitored {activeHospital.shortName} Locations)
                 </label>
                 <select
                   value={selectedLocationIndex}
                   onChange={(e) => handleLocationChange(Number(e.target.value))}
                   className="w-full rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 text-xs font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none shadow-inner"
                 >
-                  <optgroup label="📍 Ground Floor (Emergency Department & Triage)">
-                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Ground Floor').map((loc) => {
-                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                  <optgroup label={`📍 Ground Floor (${activeHospital.shortName})`}>
+                    {hospitalLocations.filter(l => l.floor === 'Ground Floor').map((loc) => {
+                      const realIdx = hospitalLocations.findIndex(x => x.id === loc.id);
                       return (
                         <option key={loc.id} value={realIdx}>
                           {loc.unit_ward} — {loc.room_bed}
@@ -406,9 +439,9 @@ function TriggerPadContent() {
                     })}
                   </optgroup>
 
-                  <optgroup label="📍 Second Floor (ICU, PUI Ward R201-R209, OB New Rooms, Ortho & Surgical, OB Newborn)">
-                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Second Floor').map((loc) => {
-                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                  <optgroup label={`📍 Second Floor (${activeHospital.shortName})`}>
+                    {hospitalLocations.filter(l => l.floor === 'Second Floor').map((loc) => {
+                      const realIdx = hospitalLocations.findIndex(x => x.id === loc.id);
                       return (
                         <option key={loc.id} value={realIdx}>
                           {loc.unit_ward} — {loc.room_bed}
@@ -417,9 +450,9 @@ function TriggerPadContent() {
                     })}
                   </optgroup>
 
-                  <optgroup label="📍 Third Floor (Pedia Ward, NICU, Private Rooms, Wards 4, 5, 6, 7, 10, 11, 12)">
-                    {INITIAL_LOCATIONS.filter(l => l.floor === 'Third Floor').map((loc) => {
-                      const realIdx = INITIAL_LOCATIONS.findIndex(x => x.id === loc.id);
+                  <optgroup label={`📍 Third Floor (${activeHospital.shortName})`}>
+                    {hospitalLocations.filter(l => l.floor === 'Third Floor').map((loc) => {
+                      const realIdx = hospitalLocations.findIndex(x => x.id === loc.id);
                       return (
                         <option key={loc.id} value={realIdx}>
                           {loc.unit_ward} — {loc.room_bed}
@@ -427,6 +460,20 @@ function TriggerPadContent() {
                       );
                     })}
                   </optgroup>
+
+                  {/* Fallback for other floors or uncategorized */}
+                  {hospitalLocations.filter(l => !['Ground Floor', 'Second Floor', 'Third Floor'].includes(l.floor)).length > 0 && (
+                    <optgroup label={`📍 Other Hospital Areas (${activeHospital.shortName})`}>
+                      {hospitalLocations.filter(l => !['Ground Floor', 'Second Floor', 'Third Floor'].includes(l.floor)).map((loc) => {
+                        const realIdx = hospitalLocations.findIndex(x => x.id === loc.id);
+                        return (
+                          <option key={loc.id} value={realIdx}>
+                            {loc.floor} • {loc.unit_ward} — {loc.room_bed}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 

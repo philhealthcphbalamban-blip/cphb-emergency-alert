@@ -33,7 +33,7 @@ function generateUUID(): string {
 }
 
 // In-memory fallback history list
-let inMemoryActiveAlert: EmergencyAlert | null = null;
+let inMemoryActiveAlertsByHosp: Record<string, EmergencyAlert | null> = {};
 let inMemoryAlertHistory: EmergencyAlert[] = [];
 
 // GET /api/emergency/alerts -> Returns active alert and recent alerts
@@ -41,12 +41,21 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabase();
     const isAll = req.nextUrl.searchParams.get('all') === 'true';
+    const hospitalId = req.nextUrl.searchParams.get('hospital_id') || 'cphb';
 
     if (isAll) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('emergency_alerts')
         .select('*, responders:alert_responders(*)')
         .order('triggered_at', { ascending: false });
+
+      if (hospitalId === 'cphb') {
+        query = query.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+      } else {
+        query = query.eq('hospital_id', hospitalId);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         const formatted = data.map(d => ({
@@ -57,22 +66,29 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: true, alerts: formatted });
       }
 
-      return NextResponse.json({ success: true, alerts: inMemoryAlertHistory });
+      const filteredHistory = inMemoryAlertHistory.filter(a => (a.hospital_id || 'cphb') === hospitalId);
+      return NextResponse.json({ success: true, alerts: filteredHistory });
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('emergency_alerts')
       .select('*, responders:alert_responders(*)')
       .in('status', ['ACTIVE', 'RESPONDING'])
-      .order('triggered_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('triggered_at', { ascending: false });
+
+    if (hospitalId === 'cphb') {
+      query = query.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+    } else {
+      query = query.eq('hospital_id', hospitalId);
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle();
 
     if (error) {
       console.warn('GET /api/emergency/alerts fallback from Supabase error:', error);
       return NextResponse.json({
         success: true,
-        activeAlert: inMemoryActiveAlert,
+        activeAlert: inMemoryActiveAlertsByHosp[hospitalId] || null,
         fallback: true,
       });
     }
@@ -85,9 +101,9 @@ export async function GET(req: NextRequest) {
         code_details: EMERGENCY_CODES[data.code_id] || EMERGENCY_CODES.code_blue,
         patient_details: patient,
       };
-      inMemoryActiveAlert = activeAlert;
+      inMemoryActiveAlertsByHosp[hospitalId] = activeAlert;
     } else {
-      inMemoryActiveAlert = null;
+      inMemoryActiveAlertsByHosp[hospitalId] = null;
     }
 
     return NextResponse.json({
@@ -97,7 +113,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Error in GET /api/emergency/alerts:', err);
-    return NextResponse.json({ success: true, activeAlert: inMemoryActiveAlert, alerts: inMemoryAlertHistory, fallback: true });
+    return NextResponse.json({ success: true, activeAlert: null, alerts: [], fallback: true });
   }
 }
 
@@ -106,6 +122,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const action = body.action || 'TRIGGER'; // 'TRIGGER' | 'RESOLVE' | 'RESPOND'
+    const hospitalId = body.hospital_id || 'cphb';
     const supabase = getSupabase();
 
     if (action === 'TRIGGER') {
@@ -114,6 +131,7 @@ export async function POST(req: NextRequest) {
 
       const newAlertRecord = {
         id: alertUuid,
+        hospital_id: hospitalId,
         code_id: body.code_id || 'code_blue',
         location_text: body.location_text || 'Emergency Department (ER)',
         status: 'ACTIVE' as AlertStatus,
@@ -129,6 +147,7 @@ export async function POST(req: NextRequest) {
         code_details: EMERGENCY_CODES[newAlertRecord.code_id] || EMERGENCY_CODES.code_blue,
         responders: [],
       };
+      inMemoryActiveAlertsByHosp[hospitalId] = formattedAlert;
       inMemoryAlertHistory = [formattedAlert, ...inMemoryAlertHistory.filter(a => a.id !== formattedAlert.id)];
 
       try {
@@ -149,7 +168,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'RESOLVE') {
-      inMemoryActiveAlert = null;
+      inMemoryActiveAlertsByHosp[hospitalId] = null;
       const resolvedAt = new Date().toISOString();
 
       inMemoryAlertHistory = inMemoryAlertHistory.map(a => {
@@ -205,9 +224,9 @@ export async function POST(req: NextRequest) {
         responded_at: new Date().toISOString(),
       };
 
-      if (inMemoryActiveAlert) {
-        inMemoryActiveAlert.status = 'RESPONDING';
-        inMemoryActiveAlert.responders = [...(inMemoryActiveAlert.responders || []), newResponder as any];
+      if (inMemoryActiveAlertsByHosp[hospitalId]) {
+        inMemoryActiveAlertsByHosp[hospitalId]!.status = 'RESPONDING';
+        inMemoryActiveAlertsByHosp[hospitalId]!.responders = [...(inMemoryActiveAlertsByHosp[hospitalId]!.responders || []), newResponder as any];
       }
 
       try {
