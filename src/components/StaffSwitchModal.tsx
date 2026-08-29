@@ -11,10 +11,11 @@ import {
   User, 
   CheckCircle2,
   Lock,
-  HeartPulse
+  HeartPulse,
+  Unlock
 } from 'lucide-react';
 import { HospitalStaff } from '@/types/staff';
-import { StaffService, CPHB_STAFF_MEMBERS } from '@/lib/staffService';
+import { StaffService } from '@/lib/staffService';
 
 interface Props {
   isOpen: boolean;
@@ -32,6 +33,11 @@ export const StaffSwitchModal: React.FC<Props> = ({
   const [roleCategory, setRoleCategory] = useState<'ALL' | 'DOCTORS' | 'NURSES'>('ALL');
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
 
+  // Admin PIN prompt state
+  const [pendingAdminStaff, setPendingAdminStaff] = useState<HospitalStaff | null>(null);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [pinError, setPinError] = useState<string>('');
+
   if (!isOpen) return null;
 
   const allStaff = StaffService.getAllStaff();
@@ -40,7 +46,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
   if (roleCategory === 'DOCTORS') {
     filtered = filtered.filter(s => s.is_doctor);
   } else if (roleCategory === 'NURSES') {
-    filtered = filtered.filter(s => !s.is_doctor && s.role !== 'Security Officer');
+    filtered = filtered.filter(s => !s.is_doctor && !s.is_admin && s.role !== 'Security Officer');
   }
 
   if (selectedDept !== 'ALL') {
@@ -59,6 +65,33 @@ export const StaffSwitchModal: React.FC<Props> = ({
     'Outpatient Clinic (OPD)',
   ];
 
+  const handleStaffClick = (staff: HospitalStaff) => {
+    // If Admin account, require Admin PIN
+    if (staff.is_admin) {
+      setPendingAdminStaff(staff);
+      setAdminPinInput('');
+      setPinError('');
+      return;
+    }
+
+    // For ALL Doctors, Nurses, and Security -> Instant 1-touch duty switch! (NO PASSWORD NEEDED)
+    onSelectStaff(staff);
+    onClose();
+  };
+
+  const handleVerifyAdminPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPinInput === '1234' || adminPinInput === 'cphb2026' || adminPinInput === 'admin') {
+      if (pendingAdminStaff) {
+        onSelectStaff(pendingAdminStaff);
+      }
+      setPendingAdminStaff(null);
+      onClose();
+    } else {
+      setPinError('Sayop ang Admin PIN! (Default: 1234)');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
       <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
@@ -70,8 +103,8 @@ export const StaffSwitchModal: React.FC<Props> = ({
               <Users className="h-6 w-6" />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900">Hospital Duty Staff & Personnel Directory</h3>
-              <p className="text-xs text-slate-500">Cebu Provincial Hospital - Balamban • Live Ref_Personnel with PRC Licenses</p>
+              <h3 className="text-base font-black text-slate-900">Hospital Duty Staff & Station Switcher</h3>
+              <p className="text-xs text-slate-500">1-Touch Instant Duty Switching • No Password Needed for Wards & Doctors</p>
             </div>
           </div>
 
@@ -94,7 +127,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
             </div>
             <div>
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
-                Active Duty Session:
+                Active Duty Session (Permanent Standby):
               </span>
               <span className="text-xs font-black text-slate-900">
                 {currentStaff.name} ({currentStaff.role}) • {currentStaff.department} • <span className="font-mono text-emerald-800 font-bold">PRC: {currentStaff.prc_license_no}</span>
@@ -116,7 +149,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
                 roleCategory === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              All Staff ({CPHB_STAFF_MEMBERS.length})
+              All Staff ({allStaff.length})
             </button>
             <button
               onClick={() => setRoleCategory('DOCTORS')}
@@ -125,7 +158,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
               }`}
             >
               <Stethoscope className="h-3.5 w-3.5" />
-              <span>Doctors (MD) ({StaffService.getDoctors().length})</span>
+              <span>Doctors ({StaffService.getDoctors().length})</span>
             </button>
             <button
               onClick={() => setRoleCategory('NURSES')}
@@ -134,7 +167,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
               }`}
             >
               <HeartPulse className="h-3.5 w-3.5" />
-              <span>Nurses (RN) ({StaffService.getNurses().length})</span>
+              <span>Nurses ({StaffService.getNurses().length})</span>
             </button>
           </div>
         </div>
@@ -163,10 +196,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
             return (
               <button
                 key={staff.id}
-                onClick={() => {
-                  onSelectStaff(staff);
-                  onClose();
-                }}
+                onClick={() => handleStaffClick(staff)}
                 className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition ${
                   isCurrent
                     ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20'
@@ -184,7 +214,9 @@ export const StaffSwitchModal: React.FC<Props> = ({
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-black text-slate-900">{staff.name}</span>
                       <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
-                        staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        staff.is_admin ? 'bg-slate-900 text-white' :
+                        staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' : 
+                        'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       }`}>
                         {staff.role}
                       </span>
@@ -192,11 +224,6 @@ export const StaffSwitchModal: React.FC<Props> = ({
                     <p className="text-[11px] text-slate-600 font-semibold mt-0.5">
                       {staff.department} • <strong className="text-blue-900 font-mono">PRC: {staff.prc_license_no}</strong> • ID: <span className="font-mono text-slate-500">{staff.employee_id}</span>
                     </p>
-                    {staff.specialization && (
-                      <p className="text-[10px] text-slate-400 font-medium line-clamp-1">
-                        {staff.specialization}
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -207,7 +234,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
                     </span>
                   ) : (
                     <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-blue-600 hover:text-white transition border border-slate-200">
-                      Switch Duty &rarr;
+                      {staff.is_admin ? 'Admin PIN 🔒' : 'Switch Duty →'}
                     </span>
                   )}
                 </div>
@@ -218,10 +245,61 @@ export const StaffSwitchModal: React.FC<Props> = ({
 
         {/* Modal Footer */}
         <div className="p-3 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-400 font-medium">
-          Access from any device on hospital LAN: <strong className="text-blue-600 font-mono">http://192.168.12.240:3000</strong>
+          Wards & Doctors switch instantly • Admin requires PIN (Default: 1234)
         </div>
 
       </div>
+
+      {/* ADMIN PIN VERIFICATION MODAL */}
+      {pendingAdminStaff && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4 text-center">
+            <div className="h-12 w-12 bg-slate-900 text-amber-400 rounded-xl flex items-center justify-center mx-auto shadow">
+              <Lock className="h-6 w-6" />
+            </div>
+
+            <div>
+              <h4 className="text-base font-black text-slate-900">Administrator Security Access</h4>
+              <p className="text-xs text-slate-500 mt-0.5">Enter Admin PIN to switch to Administrator Mode</p>
+            </div>
+
+            <form onSubmit={handleVerifyAdminPin} className="space-y-3">
+              <input
+                type="password"
+                value={adminPinInput}
+                onChange={(e) => setAdminPinInput(e.target.value)}
+                placeholder="Enter PIN (Default: 1234)"
+                autoFocus
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-center font-mono font-bold text-sm tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
+              />
+
+              {pinError && (
+                <p className="text-xs font-bold text-red-600 bg-red-50 py-1.5 rounded-lg border border-red-200">
+                  {pinError}
+                </p>
+              )}
+
+              <div className="flex items-center space-x-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingAdminStaff(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider transition flex items-center justify-center space-x-1"
+                >
+                  <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Verify</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -14,8 +14,8 @@ export interface IHOMISPatient {
   room_bed: string;                 // e.g. 'TEMPOB-01', 'ICU-01', 'Trauma Bay 1'
   admitting_diagnosis: string;      // e.g. 'G2P1 (1001) PU 38 3/7 WEEKS AOG PREVIOUS CS X 1'
   chief_complaint?: string;         // e.g. 'Active labor pains'
-  accommodation: 'NON-BASIC' | 'BASIC' | 'SERVICE';
-  type_of_service: 'OBNEWROOM' | 'MEDICAL' | 'SURGICAL' | 'PEDIATRICS' | 'OBSTETRICS' | 'ICU' | 'TRAUMA';
+  accommodation?: 'SERVICE' | 'NON-BASIC' | 'PAY' | 'CHARITY' | string;
+  type_of_service?: 'OBNEWROOM' | 'OBPRDOC' | 'MEDICAL' | 'SURGICAL' | 'PEDIATRICS' | 'OBSTETRICS' | 'ICU' | 'TRAUMA' | string;
   attending_physician: string;      // e.g. 'Dr. Santos, MD (OB-GYN)'
   admission_date: string;           // e.g. '08/29/2026'
   admission_time: string;           // e.g. '09:00 AM'

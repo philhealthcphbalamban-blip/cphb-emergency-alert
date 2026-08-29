@@ -15,12 +15,22 @@ import {
   Search,
   Key,
   Award,
-  AlertCircle
+  AlertCircle,
+  FileSpreadsheet,
+  Upload,
+  Lock,
+  Unlock,
+  CheckCircle2
 } from 'lucide-react';
 import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
 import { StaffService } from '@/lib/staffService';
+import * as XLSX from 'xlsx';
 
 export default function AdminUsersPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [adminPin, setAdminPin] = useState<string>('');
+  const [pinError, setPinError] = useState<string>('');
+
   const [staffList, setStaffList] = useState<HospitalStaff[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<'ALL' | 'DOCTORS' | 'NURSES' | 'ADMIN'>('ALL');
@@ -28,6 +38,11 @@ export default function AdminUsersPage() {
   // Modal / Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Excel Import state
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [parsedRows, setParsedRows] = useState<HospitalStaff[]>([]);
+  const [importStatus, setImportStatus] = useState<string>('');
 
   // Form Fields
   const [formName, setFormName] = useState('');
@@ -44,11 +59,32 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
+    // Check if session already unlocked admin
+    const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
+    if (isUnlocked === 'true') {
+      setIsAuthenticated(true);
+    }
     reloadStaff();
     const handler = () => reloadStaff();
     window.addEventListener('cphb_staff_directory_updated', handler);
     return () => window.removeEventListener('cphb_staff_directory_updated', handler);
   }, []);
+
+  const handleVerifyPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPin === '1234' || adminPin === 'cphb2026' || adminPin === 'admin') {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('cphb_admin_unlocked', 'true');
+      setPinError('');
+    } else {
+      setPinError('Sayop ang Admin PIN! (Default: 1234 o cphb2026)');
+    }
+  };
+
+  const handleLogoutAdmin = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('cphb_admin_unlocked');
+  };
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -80,6 +116,83 @@ export default function AdminUsersPage() {
     if (confirm(`Sigurado ka nga tangtangon si ${name} gikan sa Ref_Personnel?`)) {
       StaffService.deleteStaffMember(id);
     }
+  };
+
+  // Excel File Upload Handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsName = wb.SheetNames[0];
+        const ws = wb.Sheets[wsName];
+        const rawJson: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        if (rawJson.length === 0) {
+          setImportStatus('Walay sulod ang Excel file!');
+          return;
+        }
+
+        const mapped: HospitalStaff[] = rawJson.map((row, idx) => {
+          const rawName = row['NAME'] || row['Name'] || row['EMPLOYEE_NAME'] || row['Personnel Name'] || row['Personnel'] || `Staff ${idx + 1}`;
+          const rawPrc = String(row['PRC_LICENSE'] || row['PRC'] || row['PRC NO'] || row['PRC_NO'] || row['License'] || row['LICENSE'] || '0000000');
+          const rawRole = String(row['ROLE'] || row['Role'] || row['POSITION'] || row['Designation'] || 'Staff Nurse');
+          const rawDept = String(row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || 'Emergency Department (ER)');
+          const rawEmpId = String(row['EMPLOYEE_ID'] || row['ID'] || row['Emp ID'] || `CPHB-${1000 + idx}`);
+          const rawSpec = String(row['SPECIALIZATION'] || row['Specialization'] || row['Scope'] || '');
+          const rawContact = String(row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Hospital Desk');
+
+          const isDoc = rawRole.toLowerCase().includes('doctor') || rawRole.toLowerCase().includes('physician') || rawName.includes('Dr.') || rawName.includes('MD');
+
+          const initials = String(rawName)
+            .replace(/Dr\.|MD|RN|Nurse|,/gi, '')
+            .trim()
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map(w => w[0])
+            .join('')
+            .toUpperCase() || 'CP';
+
+          return {
+            id: `staff-excel-${Date.now()}-${idx}`,
+            name: rawName,
+            role: isDoc ? 'Physician' : 'Staff Nurse',
+            department: (rawDept as any) || 'Emergency Department (ER)',
+            employee_id: rawEmpId,
+            prc_license_no: rawPrc,
+            specialization: rawSpec,
+            contact_no: rawContact,
+            avatar_initials: initials,
+            color_hex: isDoc ? '#2563eb' : '#059669',
+            is_doctor: isDoc,
+            is_admin: false,
+            can_trigger_code: true,
+            can_respond_code: true,
+            can_resolve_code: isDoc,
+          };
+        });
+
+        setParsedRows(mapped);
+        setImportStatus(`Na-read ang ${mapped.length} ka employees gikan sa Excel!`);
+        setIsImportOpen(true);
+      } catch (err) {
+        setImportStatus('Error sa pagbasa sa Excel file. Siguroha nga valid .xlsx o .csv file!');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmImport = () => {
+    if (parsedRows.length === 0) return;
+    StaffService.setBulkStaff(parsedRows);
+    setIsImportOpen(false);
+    setParsedRows([]);
+    alert(`Success! Na-import ug na-save ang ${parsedRows.length} ka tinuod nga employees gikan sa Excel!`);
   };
 
   const handleSaveForm = (e: React.FormEvent) => {
@@ -137,6 +250,60 @@ export default function AdminUsersPage() {
     return matchesQuery;
   });
 
+  // Admin PIN Gate UI
+  if (!isAuthenticated) {
+    return (
+      <div className="w-full max-w-md mx-auto px-4 py-16">
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
+          <div className="h-16 w-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+            <Lock className="h-8 w-8 text-amber-400" />
+          </div>
+
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Admin Personnel Security Lock</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Ang Admin lang ang nagkinahanglan og PIN aron ma-manage ang database. Ang mga Wards, ER, ug Doktor walay login nga gikinahanglan!
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyPin} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Enter Admin PIN / Password:
+              </label>
+              <input
+                type="password"
+                value={adminPin}
+                onChange={(e) => setAdminPin(e.target.value)}
+                placeholder="Default: 1234"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold text-center tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
+                autoFocus
+              />
+            </div>
+
+            {pinError && (
+              <p className="text-xs font-bold text-red-600 text-center bg-red-50 py-2 rounded-lg border border-red-200">
+                {pinError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-2"
+            >
+              <Unlock className="h-4 w-4 text-emerald-400" />
+              <span>Unlock Admin Controls</span>
+            </button>
+          </form>
+
+          <div className="text-[11px] text-slate-400 font-semibold border-t border-slate-100 pt-4">
+            Default Security PIN: <strong className="text-slate-700 font-mono">1234</strong> o <strong className="text-slate-700 font-mono">cphb2026</strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8 space-y-6">
       
@@ -149,23 +316,46 @@ export default function AdminUsersPage() {
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-xl font-black text-slate-900">Hospital Admin & Personnel Management</h1>
-              <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white font-mono text-[10px] font-black">
-                CPHB IT
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black flex items-center">
+                <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
+                Unlocked
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Manage Doctor & Nurse Accounts • Synced with iHOMIS+ Ref_Personnel & PRC License Registry
+              Upload Excel Employee Files • Synced with iHOMIS+ Ref_Personnel & PRC Licenses
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Action Buttons: Upload Excel, Add Employee, Lock Admin */}
+        <div className="flex flex-wrap items-center gap-2">
+          
+          {/* Hidden File Input for Excel */}
+          <label className="py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>Upload Excel File (.xlsx / .csv)</span>
+            <input 
+              type="file" 
+              accept=".xlsx, .xls, .csv" 
+              onChange={handleFileUpload} 
+              className="hidden" 
+            />
+          </label>
+
           <button
             onClick={handleOpenAdd}
             className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5"
           >
             <UserPlus className="h-4 w-4" />
             <span>+ Add Employee</span>
+          </button>
+
+          <button
+            onClick={handleLogoutAdmin}
+            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition"
+            title="Lock Admin Control"
+          >
+            Lock 🔒
           </button>
         </div>
       </div>
@@ -226,81 +416,157 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-              {filteredStaff.map((staff) => (
-                <tr key={staff.id} className="hover:bg-slate-50/60 transition">
-                  
-                  {/* Avatar */}
-                  <td className="py-3 px-4">
-                    <div 
-                      className="h-9 w-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-sm"
-                      style={{ backgroundColor: staff.color_hex }}
-                    >
-                      {staff.avatar_initials}
-                    </div>
-                  </td>
-
-                  {/* Name & Specialization */}
-                  <td className="py-3 px-3">
-                    <span className="font-extrabold text-slate-900 text-xs block">{staff.name}</span>
-                    {staff.specialization && (
-                      <span className="text-[10px] text-slate-500 font-medium line-clamp-1">{staff.specialization}</span>
-                    )}
-                  </td>
-
-                  {/* Role */}
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                      staff.is_admin ? 'bg-slate-900 text-white' :
-                      staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                      'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                    }`}>
-                      {staff.role}
-                    </span>
-                  </td>
-
-                  {/* Department */}
-                  <td className="py-3 px-3 text-xs font-semibold text-slate-700">
-                    {staff.department}
-                  </td>
-
-                  {/* PRC License */}
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    <span className="font-mono text-xs font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      {staff.prc_license_no}
-                    </span>
-                  </td>
-
-                  {/* Employee ID */}
-                  <td className="py-3 px-3 whitespace-nowrap font-mono text-slate-500 text-xs font-bold">
-                    {staff.employee_id}
-                  </td>
-
-                  {/* Actions */}
-                  <td className="py-3 px-3 text-center whitespace-nowrap">
-                    <div className="flex items-center justify-center space-x-1.5">
-                      <button
-                        onClick={() => handleEdit(staff)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
-                        title="Edit Employee"
+              {filteredStaff.length > 0 ? (
+                filteredStaff.map((staff) => (
+                  <tr key={staff.id} className="hover:bg-slate-50/60 transition">
+                    
+                    {/* Avatar */}
+                    <td className="py-3 px-4">
+                      <div 
+                        className="h-9 w-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-sm"
+                        style={{ backgroundColor: staff.color_hex }}
                       >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(staff.id, staff.name)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
-                        title="Remove Employee"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
+                        {staff.avatar_initials}
+                      </div>
+                    </td>
 
+                    {/* Name & Specialization */}
+                    <td className="py-3 px-3">
+                      <span className="font-extrabold text-slate-900 text-xs block">{staff.name}</span>
+                      {staff.specialization && (
+                        <span className="text-[10px] text-slate-500 font-medium line-clamp-1">{staff.specialization}</span>
+                      )}
+                    </td>
+
+                    {/* Role */}
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                        staff.is_admin ? 'bg-slate-900 text-white' :
+                        staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                        'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      }`}>
+                        {staff.role}
+                      </span>
+                    </td>
+
+                    {/* Department */}
+                    <td className="py-3 px-3 text-xs font-semibold text-slate-700">
+                      {staff.department}
+                    </td>
+
+                    {/* PRC License */}
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="font-mono text-xs font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        {staff.prc_license_no}
+                      </span>
+                    </td>
+
+                    {/* Employee ID */}
+                    <td className="py-3 px-3 whitespace-nowrap font-mono text-slate-500 text-xs font-bold">
+                      {staff.employee_id}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center space-x-1.5">
+                        <button
+                          onClick={() => handleEdit(staff)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
+                          title="Edit Employee"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(staff.id, staff.name)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
+                          title="Remove Employee"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400 font-semibold">
+                    Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"+ Add Employee"</strong> aron makasulod og staff!
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* EXCEL IMPORT PREVIEW MODAL */}
+      {isImportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <FileSpreadsheet className="h-5 w-5 text-blue-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  Excel Personnel Import Preview ({parsedRows.length} Employees)
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsImportOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-2 text-xs">
+              <p className="text-slate-500 font-semibold mb-2">
+                Palihug i-review ang mga na-extract nga data gikan sa imong Excel file sa dili pa i-save:
+              </p>
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {parsedRows.slice(0, 15).map((row, i) => (
+                  <div key={i} className="p-3 bg-white flex items-center justify-between">
+                    <div>
+                      <span className="font-extrabold text-slate-900 block">{row.name} ({row.role})</span>
+                      <span className="text-[11px] text-slate-500">{row.department} • ID: {row.employee_id}</span>
+                    </div>
+                    <span className="font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      PRC: {row.prc_license_no}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {parsedRows.length > 15 && (
+                <p className="text-center text-slate-400 text-xs mt-2">
+                  ... ug {parsedRows.length - 15} pa ka dugang employees
+                </p>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-700">
+                ✓ Ready to import {parsedRows.length} personnel into CPHB system
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportOpen(false)}
+                  className="py-2 px-4 rounded-xl bg-slate-200 text-slate-700 font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  className="py-2 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-wider shadow-md transition"
+                >
+                  Confirm & Save All
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD / EDIT EMPLOYEE MODAL */}
       {isFormOpen && (
