@@ -100,24 +100,27 @@ export const Navbar: React.FC = () => {
         <div className="w-full max-w-[98%] mx-auto flex h-16 items-center justify-between px-3 sm:px-6">
           
           {/* Brand & Hospital Info */}
-          <Link href="/" className="flex items-center space-x-3 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 shadow-sm text-white group-hover:bg-blue-700 transition">
+          <Link href="/" className="flex items-center space-x-3 group shrink-0">
+            <div 
+              className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm text-white transition shrink-0"
+              style={{ backgroundColor: currentHospital.colorHex }}
+            >
               <Activity className="h-5 w-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-1.5">
+            <div className="shrink-0">
+              <div className="flex items-center space-x-1.5 whitespace-nowrap">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900">
-                  CPHB CODE ALERT
+                  {currentHospital.code} CODE ALERT
                 </span>
                 <span className="rounded bg-red-100 px-1.5 py-0.2 text-[9px] font-black uppercase text-red-700 border border-red-200">
                   RAPID
                 </span>
-                <span className="hidden sm:inline-block rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800 border border-blue-200">
+                <span className="hidden xl:inline-block rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800 border border-blue-200">
                   iHOMIS+
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium hidden sm:block">
-                Cebu Provincial Hospital - Balamban
+              <p className="text-[11px] text-slate-500 font-medium hidden sm:block whitespace-nowrap">
+                {currentHospital.name}
               </p>
             </div>
           </Link>

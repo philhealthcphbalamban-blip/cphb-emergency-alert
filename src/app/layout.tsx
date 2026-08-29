@@ -4,7 +4,10 @@ import { Navbar } from '@/components/Navbar';
 import { GlobalAlertModal } from '@/components/GlobalAlertModal';
 
 export const metadata: Metadata = {
-  title: 'Hospital Rapid Emergency Alert System | CPH Balamban & iHOMIS Plus',
+  title: {
+    default: 'CPHB Code Alert | Rapid Emergency System',
+    template: '%s | CPHB Code Alert',
+  },
   description: 'Ultra-fast hospital emergency code broadcasting and responder management system synced with iHOMIS Plus.',
   icons: {
     icon: [
