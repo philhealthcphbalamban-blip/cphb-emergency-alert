@@ -21,7 +21,8 @@ import {
   Lock,
   Unlock,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Eye
 } from 'lucide-react';
 import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
 import { StaffService, AdminAuthService, DEFAULT_CPHB_STAFF } from '@/lib/staffService';
@@ -29,6 +30,7 @@ import * as XLSX from 'xlsx';
 
 export default function AdminUsersPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isPinModalOpenForLogin, setIsPinModalOpenForLogin] = useState<boolean>(false);
   const [adminPin, setAdminPin] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
 
@@ -107,11 +109,13 @@ export default function AdminUsersPage() {
     if (AdminAuthService.verifyPin(adminPin)) {
       setIsAuthenticated(true);
       sessionStorage.setItem('cphb_admin_unlocked', 'true');
+      setIsPinModalOpenForLogin(false);
+      setAdminPin('');
+      setPinError('');
       const adminStaff = StaffService.getAllStaff().find(s => s.is_admin) || DEFAULT_CPHB_STAFF[0];
       if (adminStaff) {
         StaffService.setCurrentStaff(adminStaff);
       }
-      setPinError('');
     } else {
       setPinError('Sayop ang Admin PIN! (Default: 1234)');
     }
@@ -154,6 +158,7 @@ export default function AdminUsersPage() {
   };
 
   const handleOpenAdd = () => {
+    if (!isAuthenticated) return;
     setEditingId(null);
     setFormName('');
     setFormRole('Physician');
@@ -168,6 +173,10 @@ export default function AdminUsersPage() {
   };
 
   const handleEdit = (staff: HospitalStaff) => {
+    if (!isAuthenticated) {
+      setIsPinModalOpenForLogin(true);
+      return;
+    }
     setEditingId(staff.id);
     setFormName(staff.name);
     setFormRole(staff.role);
@@ -182,6 +191,10 @@ export default function AdminUsersPage() {
   };
 
   const handleDelete = (id: string, name: string) => {
+    if (!isAuthenticated) {
+      setIsPinModalOpenForLogin(true);
+      return;
+    }
     if (confirm(`Sigurado ka nga tangtangon si ${name} gikan sa Ref_Personnel?`)) {
       StaffService.deleteStaffMember(id);
     }
@@ -189,6 +202,10 @@ export default function AdminUsersPage() {
 
   // Excel File Upload Handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAuthenticated) {
+      setIsPinModalOpenForLogin(true);
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -252,7 +269,6 @@ export default function AdminUsersPage() {
             row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Desk'
           ).trim();
 
-          // Smart Role Determination (If DR. in name, or physician/doctor in role -> Physician)
           const isDoc = 
             rawName.toUpperCase().startsWith('DR.') || 
             rawName.toUpperCase().startsWith('DR ') || 
@@ -372,139 +388,133 @@ export default function AdminUsersPage() {
     return matchesQuery;
   });
 
-  // Admin PIN Gate UI
-  if (!isAuthenticated) {
-    return (
-      <div className="w-full max-w-md mx-auto px-4 py-12 sm:py-16">
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
-          <div className="h-16 w-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg">
-            <Lock className="h-8 w-8 text-amber-400" />
-          </div>
-
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900">Admin Personnel Security Lock</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Ang Admin lang ang nagkinahanglan og PIN. Ang mga Wards, ER, ug Doktor walay login nga gikinahanglan!
-            </p>
-          </div>
-
-          <form onSubmit={handleVerifyPin} className="space-y-4 text-left">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Enter Admin PIN / Password:
-              </label>
-              <input
-                type="password"
-                value={adminPin}
-                onChange={(e) => setAdminPin(e.target.value)}
-                placeholder="Default: 1234"
-                autoComplete="new-password"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold text-center tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
-                autoFocus
-              />
-            </div>
-
-            {pinError && (
-              <p className="text-xs font-bold text-red-600 text-center bg-red-50 py-2 rounded-lg border border-red-200">
-                {pinError}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-2"
-            >
-              <Unlock className="h-4 w-4 text-emerald-400" />
-              <span>Unlock Admin Controls</span>
-            </button>
-          </form>
-
-          <div className="text-[11px] text-slate-400 font-semibold border-t border-slate-100 pt-4">
-            Default Security PIN: <strong className="text-slate-700 font-mono">1234</strong> o <strong className="text-slate-700 font-mono">cphb2026</strong>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-5 sm:space-y-6">
       
-      {/* Top Header */}
+      {/* Top Header Card */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-3 sm:space-x-3.5">
-          <div className="p-2.5 sm:p-3 rounded-2xl bg-slate-900 text-white shadow-md shrink-0">
-            <ShieldCheck className="h-6 w-6 sm:h-7 sm:w-7 text-emerald-400" />
+          <div className={`p-2.5 sm:p-3 rounded-2xl text-white shadow-md shrink-0 ${
+            isAuthenticated ? 'bg-slate-900' : 'bg-blue-600'
+          }`}>
+            {isAuthenticated ? (
+              <ShieldCheck className="h-6 w-6 sm:h-7 sm:w-7 text-emerald-400" />
+            ) : (
+              <Users className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+            )}
           </div>
           <div>
             <div className="flex items-center space-x-2 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-black text-slate-900">Hospital Admin & Personnel Management</h1>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black flex items-center">
-                <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
-                Unlocked
-              </span>
+              <h1 className="text-lg sm:text-xl font-black text-slate-900">
+                {isAuthenticated ? 'Hospital Admin & Personnel Management' : 'Hospital Personnel & Staff Directory'}
+              </h1>
+              {isAuthenticated ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black flex items-center">
+                  <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
+                  Admin Unlocked
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 font-mono text-[10px] font-black flex items-center">
+                  <Eye className="h-3 w-3 mr-1 text-slate-500" />
+                  Staff View (Read-Only)
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Cloud Realtime Sync (Mobile & PC) • iHOMIS+ Ref_Personnel & Accreditation
+              {isAuthenticated 
+                ? 'Full Admin Access: Upload Excel, Add/Edit Employees & PIN Security'
+                : 'Directory View for Wards, Doctors & Nurses • Admin PIN required to modify'
+              }
             </p>
           </div>
         </div>
 
-        {/* Action Buttons: Upload Excel, Add Employee, Change PIN, Lock Admin */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
           
-          {/* Hidden File Input for Excel */}
-          <label className="col-span-2 sm:col-span-1 py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer">
-            <FileSpreadsheet className="h-4 w-4" />
-            <span>Upload Excel File (.xlsx / .csv)</span>
-            <input 
-              type="file" 
-              accept=".xlsx, .xls, .csv" 
-              onChange={handleFileUpload} 
-              className="hidden" 
-            />
-          </label>
+          {/* ONLY SHOWN WHEN UNLOCKED AS ADMIN */}
+          {isAuthenticated ? (
+            <>
+              {/* Hidden File Input for Excel */}
+              <label className="py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer">
+                <FileSpreadsheet className="h-4 w-4" />
+                <span>Upload Excel File (.xlsx / .csv)</span>
+                <input 
+                  type="file" 
+                  accept=".xlsx, .xls, .csv" 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                />
+              </label>
 
-          <button
-            onClick={handleOpenAdd}
-            className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>+ Add Employee</span>
-          </button>
+              <button
+                onClick={handleOpenAdd}
+                className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>+ Add Employee</span>
+              </button>
 
-          <button
-            onClick={() => {
-              setOldPin('');
-              setNewPin('');
-              setConfirmPin('');
-              setPinChangeMsg(null);
-              setIsPinModalOpen(true);
-            }}
-            className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
-            title="Change Admin Security PIN"
-          >
-            <Key className="h-4 w-4" />
-            <span>Change PIN</span>
-          </button>
+              <button
+                onClick={() => {
+                  setOldPin('');
+                  setNewPin('');
+                  setConfirmPin('');
+                  setPinChangeMsg(null);
+                  setIsPinModalOpen(true);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
+                title="Change Admin Security PIN"
+              >
+                <Key className="h-4 w-4" />
+                <span>Change PIN</span>
+              </button>
 
-          <button
-            onClick={handleManualCloudSync}
-            disabled={isSyncing}
-            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center space-x-1"
-            title="Sync with Cloud"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
-            <span>{isSyncing ? 'Syncing...' : 'Sync Cloud'}</span>
-          </button>
+              <button
+                onClick={handleManualCloudSync}
+                disabled={isSyncing}
+                className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center space-x-1"
+                title="Sync with Cloud"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync Cloud'}</span>
+              </button>
 
-          <button
-            onClick={handleLogoutAdmin}
-            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition flex items-center justify-center"
-            title="Lock Admin Control"
-          >
-            Lock 🔒
-          </button>
+              <button
+                onClick={handleLogoutAdmin}
+                className="py-2.5 px-3.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-black uppercase tracking-wider transition flex items-center justify-center space-x-1"
+                title="Lock Admin Control"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                <span>Lock Admin 🔒</span>
+              </button>
+            </>
+          ) : (
+            /* SHOWN WHEN NOT LOGGED IN AS ADMIN (DOCTORS & NURSES) */
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  setAdminPin('');
+                  setPinError('');
+                  setIsPinModalOpenForLogin(true);
+                }}
+                className="py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-2"
+              >
+                <Lock className="h-4 w-4 text-amber-400" />
+                <span>Admin Login 🔒</span>
+              </button>
+
+              <button
+                onClick={handleManualCloudSync}
+                disabled={isSyncing}
+                className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center space-x-1"
+                title="Refresh Cloud Roster"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Refresh'}</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -548,7 +558,7 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* 📱 MOBILE CARD VIEW (Visible on small screens / Phones) */}
+      {/* 📱 MOBILE CARD VIEW (Phones) */}
       <div className="block sm:hidden space-y-2.5">
         {filteredStaff.length > 0 ? (
           filteredStaff.map((staff) => (
@@ -589,31 +599,36 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                <div className="flex items-center space-x-1.5 shrink-0">
-                  <button
-                    onClick={() => handleEdit(staff)}
-                    className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(staff.id, staff.name)}
-                    className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700 transition"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                {/* Edit & Delete ONLY SHOWN WHEN UNLOCKED */}
+                {isAuthenticated && (
+                  <div className="flex items-center space-x-1.5 shrink-0">
+                    <button
+                      onClick={() => handleEdit(staff)}
+                      className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition"
+                      title="Edit Employee"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(staff.id, staff.name)}
+                      className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700 transition"
+                      title="Delete Employee"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
         ) : (
           <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
-            Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"Sync Cloud"</strong>!
+            Walay employee records nga nakit-an.
           </div>
         )}
       </div>
 
-      {/* 🖥️ DESKTOP TABLE VIEW (Visible on tablets & desktop PCs) */}
+      {/* 🖥️ DESKTOP TABLE VIEW */}
       <div className="hidden sm:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
@@ -625,7 +640,7 @@ export default function AdminUsersPage() {
                 <th className="py-3 px-3">Department / Ward</th>
                 <th className="py-3 px-3">Accreditation / PRC No</th>
                 <th className="py-3 px-3">Employee ID</th>
-                <th className="py-3 px-3 text-center">Action</th>
+                {isAuthenticated && <th className="py-3 px-3 text-center">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
@@ -686,32 +701,34 @@ export default function AdminUsersPage() {
                       {staff.employee_id}
                     </td>
 
-                    {/* Actions */}
-                    <td className="py-3 px-3 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center space-x-1.5">
-                        <button
-                          onClick={() => handleEdit(staff)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
-                          title="Edit Employee"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(staff.id, staff.name)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
-                          title="Remove Employee"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
+                    {/* Actions: ONLY WHEN UNLOCKED AS ADMIN */}
+                    {isAuthenticated && (
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center space-x-1.5">
+                          <button
+                            onClick={() => handleEdit(staff)}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
+                            title="Edit Employee"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(staff.id, staff.name)}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
+                            title="Remove Employee"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
 
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 font-semibold">
-                    Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"Sync Cloud"</strong> aron makasulod og staff!
+                  <td colSpan={isAuthenticated ? 7 : 6} className="py-12 text-center text-slate-400 font-semibold">
+                    Walay employee records nga nakit-an.
                   </td>
                 </tr>
               )}
@@ -719,6 +736,72 @@ export default function AdminUsersPage() {
           </table>
         </div>
       </div>
+
+      {/* ADMIN LOGIN PIN POPUP MODAL */}
+      {isPinModalOpenForLogin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6 text-center">
+            <div className="h-16 w-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+              <Lock className="h-8 w-8 text-amber-400" />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Administrator Access Lock</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Isulod ang Admin PIN aron ma-unlock ang Upload Excel, Add, Edit, ug Delete tools.
+              </p>
+            </div>
+
+            <form onSubmit={handleVerifyPin} className="space-y-4 text-left">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Enter Admin PIN:
+                </label>
+                <input
+                  type="password"
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  placeholder="Default: 1234"
+                  autoComplete="new-password"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold text-center tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
+                  autoFocus
+                />
+              </div>
+
+              {pinError && (
+                <p className="text-xs font-bold text-red-600 text-center bg-red-50 py-2 rounded-lg border border-red-200">
+                  {pinError}
+                </p>
+              )}
+
+              <div className="flex items-center space-x-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPinModalOpenForLogin(false);
+                    setAdminPin('');
+                    setPinError('');
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
+                >
+                  <Unlock className="h-4 w-4 text-emerald-400" />
+                  <span>Unlock</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="text-[11px] text-slate-400 font-semibold border-t border-slate-100 pt-3">
+              Default Security PIN: <strong className="text-slate-700 font-mono">1234</strong>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EXCEL IMPORT PREVIEW MODAL */}
       {isImportOpen && (
