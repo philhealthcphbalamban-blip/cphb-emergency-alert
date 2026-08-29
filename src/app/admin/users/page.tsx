@@ -71,13 +71,21 @@ export default function AdminUsersPage() {
   useEffect(() => {
     StaffService.initCloudSync();
 
-    const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
-    if (isUnlocked === 'true') {
-      setIsAuthenticated(true);
-    } else {
-      setIsAuthenticated(false);
-    }
+    const checkAdminAuth = () => {
+      const current = StaffService.getCurrentStaff();
+      const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
+      // ONLY allow edit access if the active user is the Hospital Admin AND unlocked with PIN
+      if (isUnlocked === 'true' && current?.is_admin) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+        if (!current?.is_admin) {
+          sessionStorage.removeItem('cphb_admin_unlocked');
+        }
+      }
+    };
 
+    checkAdminAuth();
     reloadStaff();
 
     // Fetch from Supabase Cloud on load (Crucial for Incognito & Mobile phones!)
@@ -87,10 +95,19 @@ export default function AdminUsersPage() {
       }
     });
 
-    const handler = () => reloadStaff();
+    const handler = () => {
+      reloadStaff();
+      checkAdminAuth();
+    };
+    const staffChangeHandler = () => {
+      checkAdminAuth();
+    };
+
     window.addEventListener('cphb_staff_directory_updated', handler);
+    window.addEventListener('cphb_staff_changed', staffChangeHandler);
     return () => {
       window.removeEventListener('cphb_staff_directory_updated', handler);
+      window.removeEventListener('cphb_staff_changed', staffChangeHandler);
     };
   }, []);
 
@@ -125,6 +142,7 @@ export default function AdminUsersPage() {
       setIsPinModalOpenForLogin(false);
       setAdminPin('');
       setPinError('');
+      // Set active staff to Hospital Admin
       const adminStaff = StaffService.getAllStaff().find(s => s.is_admin) || DEFAULT_CPHB_STAFF[0];
       if (adminStaff) {
         StaffService.setCurrentStaff(adminStaff);
@@ -136,8 +154,8 @@ export default function AdminUsersPage() {
 
   const handleChangePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isOldValid = await AdminAuthService.verifyPinAsync(oldPin);
-    if (!isOldValid) {
+    const isValid = await AdminAuthService.verifyPinAsync(oldPin);
+    if (!isValid) {
       setPinChangeMsg({ text: 'Sayop ang kasamtangang (Current) PIN!', isError: true });
       return;
     }

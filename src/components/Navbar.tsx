@@ -168,11 +168,11 @@ export const Navbar: React.FC = () => {
                 <span className={`block text-[11px] font-extrabold leading-tight ${currentStaff.is_admin ? 'text-white' : 'text-slate-900'}`}>
                   {currentStaff.name}
                 </span>
-                <span className={`block text-[9px] leading-none ${currentStaff.is_admin ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-                  {currentStaff.is_admin ? '● Admin Logged In' : `${currentStaff.department.split(' ')[0]} (${currentStaff.role})`}
+                <span className={`block text-[9px] leading-none ${currentStaff.is_admin ? 'text-emerald-400 font-bold' : 'text-slate-500 font-medium'}`}>
+                  {currentStaff.is_admin ? '● Hospital Admin' : `${currentStaff.role} • ${currentStaff.department}`}
                 </span>
               </div>
-              <ChevronDown className={`h-3.5 w-3.5 ${currentStaff.is_admin ? 'text-slate-400' : 'text-slate-400'}`} />
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
 
             {/* Quick Log Out Admin Button */}
