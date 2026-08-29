@@ -20,7 +20,8 @@ import {
   Upload,
   Lock,
   Unlock,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { HospitalStaff, StaffRole, HospitalDepartment } from '@/types/staff';
 import { StaffService, AdminAuthService } from '@/lib/staffService';
@@ -34,6 +35,7 @@ export default function AdminUsersPage() {
   const [staffList, setStaffList] = useState<HospitalStaff[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<'ALL' | 'DOCTORS' | 'NURSES' | 'ADMIN'>('ALL');
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Modal / Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -67,15 +69,35 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
+    // Initialize Cloud Sync across devices
+    StaffService.initCloudSync();
+
     const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
     if (isUnlocked === 'true') {
       setIsAuthenticated(true);
     }
     reloadStaff();
+
+    // Auto-fetch latest staff from Supabase Cloud
+    StaffService.fetchStaffFromCloud().then((cloudList) => {
+      if (cloudList && cloudList.length > 0) {
+        setStaffList(cloudList);
+      }
+    });
+
     const handler = () => reloadStaff();
     window.addEventListener('cphb_staff_directory_updated', handler);
     return () => window.removeEventListener('cphb_staff_directory_updated', handler);
   }, []);
+
+  const handleManualCloudSync = async () => {
+    setIsSyncing(true);
+    const list = await StaffService.fetchStaffFromCloud();
+    setStaffList(list);
+    setTimeout(() => {
+      setIsSyncing(false);
+    }, 600);
+  };
 
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +179,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  // Excel File Upload Handler with Accreditation No & Smart Role Detection
+  // Excel File Upload Handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -177,7 +199,6 @@ export default function AdminUsersPage() {
         }
 
         const mapped: HospitalStaff[] = rawJson.map((row, idx) => {
-          // Flexible Column Lookup
           const rawName = String(
             row['NAME'] || row['Name'] || row['EMPLOYEE_NAME'] || row['Personnel Name'] || row['Personnel'] || row['Doctor Name'] || `Staff ${idx + 1}`
           ).trim();
@@ -197,6 +218,10 @@ export default function AdminUsersPage() {
             row['PRC_NO'] || 
             row['License'] || 
             'N/A'
+          ).trim();
+
+          const rawPrc = String(
+            row['PRC'] || row['PRC NO'] || row['PRC_NO'] || row['PRC_LICENSE'] || row['License'] || 'N/A'
           ).trim();
 
           const rawDept = String(
@@ -246,7 +271,7 @@ export default function AdminUsersPage() {
             role: finalRole,
             department: rawDept || (isDoc ? 'Medical Section' : 'Nursing Section'),
             employee_id: rawEmpId,
-            prc_license_no: rawAccred,
+            prc_license_no: rawPrc !== rawAccred ? rawPrc : 'N/A',
             accreditation_no: rawAccred,
             specialization: rawSpec,
             contact_no: rawContact,
@@ -275,7 +300,7 @@ export default function AdminUsersPage() {
     StaffService.setBulkStaff(parsedRows);
     setIsImportOpen(false);
     setParsedRows([]);
-    alert(`Success! Na-import ug na-save ang ${parsedRows.length} ka personnel kauban ilang Accreditation No. gikan sa Excel!`);
+    alert(`Success! Na-import ug na-save sa Cloud ang ${parsedRows.length} ka personnel para sa tanang devices!`);
   };
 
   const handleSaveForm = (e: React.FormEvent) => {
@@ -323,10 +348,12 @@ export default function AdminUsersPage() {
 
   const filteredStaff = staffList.filter(s => {
     const q = searchQuery.toLowerCase();
-    const accred = (s.accreditation_no || s.prc_license_no || '').toLowerCase();
+    const accred = (s.accreditation_no || '').toLowerCase();
+    const prc = (s.prc_license_no || '').toLowerCase();
     const matchesQuery = 
       s.name.toLowerCase().includes(q) ||
       accred.includes(q) ||
+      prc.includes(q) ||
       s.employee_id.toLowerCase().includes(q) ||
       s.department.toLowerCase().includes(q) ||
       s.role.toLowerCase().includes(q);
@@ -340,16 +367,16 @@ export default function AdminUsersPage() {
   // Admin PIN Gate UI
   if (!isAuthenticated) {
     return (
-      <div className="w-full max-w-md mx-auto px-4 py-16">
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
+      <div className="w-full max-w-md mx-auto px-4 py-12 sm:py-16">
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
           <div className="h-16 w-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg">
             <Lock className="h-8 w-8 text-amber-400" />
           </div>
 
           <div>
-            <h2 className="text-xl font-black text-slate-900">Admin Personnel Security Lock</h2>
+            <h2 className="text-lg sm:text-xl font-black text-slate-900">Admin Personnel Security Lock</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Ang Admin lang ang nagkinahanglan og PIN aron ma-manage ang database. Ang mga Wards, ER, ug Doktor walay login nga gikinahanglan!
+              Ang Admin lang ang nagkinahanglan og PIN. Ang mga Wards, ER, ug Doktor walay login nga gikinahanglan!
             </p>
           </div>
 
@@ -392,33 +419,33 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <div className="w-full max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-5 sm:space-y-6">
       
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-3.5">
-          <div className="p-3 rounded-2xl bg-slate-900 text-white shadow-md">
-            <ShieldCheck className="h-7 w-7 text-emerald-400" />
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex items-center space-x-3 sm:space-x-3.5">
+          <div className="p-2.5 sm:p-3 rounded-2xl bg-slate-900 text-white shadow-md shrink-0">
+            <ShieldCheck className="h-6 w-6 sm:h-7 sm:w-7 text-emerald-400" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl font-black text-slate-900">Hospital Admin & Personnel Management</h1>
+            <div className="flex items-center space-x-2 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-black text-slate-900">Hospital Admin & Personnel Management</h1>
               <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black flex items-center">
                 <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
                 Unlocked
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Upload Excel Employee Files • Synced with iHOMIS+ Ref_Personnel & Accreditation Numbers
+              Cloud Realtime Sync (Mobile & PC) • iHOMIS+ Ref_Personnel & Accreditation
             </p>
           </div>
         </div>
 
         {/* Action Buttons: Upload Excel, Add Employee, Change PIN, Lock Admin */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
           
           {/* Hidden File Input for Excel */}
-          <label className="py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+          <label className="col-span-2 sm:col-span-1 py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer">
             <FileSpreadsheet className="h-4 w-4" />
             <span>Upload Excel File (.xlsx / .csv)</span>
             <input 
@@ -431,7 +458,7 @@ export default function AdminUsersPage() {
 
           <button
             onClick={handleOpenAdd}
-            className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5"
+            className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
           >
             <UserPlus className="h-4 w-4" />
             <span>+ Add Employee</span>
@@ -445,7 +472,7 @@ export default function AdminUsersPage() {
               setPinChangeMsg(null);
               setIsPinModalOpen(true);
             }}
-            className="py-2.5 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center space-x-1.5"
+            className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-md transition flex items-center justify-center space-x-1.5"
             title="Change Admin Security PIN"
           >
             <Key className="h-4 w-4" />
@@ -453,8 +480,18 @@ export default function AdminUsersPage() {
           </button>
 
           <button
+            onClick={handleManualCloudSync}
+            disabled={isSyncing}
+            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center space-x-1"
+            title="Sync with Cloud"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+
+          <button
             onClick={handleLogoutAdmin}
-            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition"
+            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition flex items-center justify-center"
             title="Lock Admin Control"
           >
             Lock 🔒
@@ -463,13 +500,13 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Filter & Search Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search name, Accreditation No, or Ward..."
+            placeholder="Search name, Accreditation, PRC, or Ward..."
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
           />
         </div>
@@ -477,7 +514,7 @@ export default function AdminUsersPage() {
         <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
           <button
             onClick={() => setFilterRole('ALL')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
               filterRole === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -485,7 +522,7 @@ export default function AdminUsersPage() {
           </button>
           <button
             onClick={() => setFilterRole('DOCTORS')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
               filterRole === 'DOCTORS' ? 'bg-blue-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -493,7 +530,7 @@ export default function AdminUsersPage() {
           </button>
           <button
             onClick={() => setFilterRole('NURSES')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition ${
               filterRole === 'NURSES' ? 'bg-emerald-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -502,8 +539,73 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Staff Personnel Grid Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* 📱 MOBILE CARD VIEW (Visible on small screens / Phones) */}
+      <div className="block sm:hidden space-y-2.5">
+        {filteredStaff.length > 0 ? (
+          filteredStaff.map((staff) => (
+            <div key={staff.id} className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div 
+                    className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0"
+                    style={{ backgroundColor: staff.color_hex }}
+                  >
+                    {staff.avatar_initials}
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs block leading-tight">{staff.name}</span>
+                    <span className="text-[10px] text-slate-500 font-medium">{staff.department}</span>
+                  </div>
+                </div>
+
+                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                  staff.is_admin ? 'bg-slate-900 text-white' :
+                  staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                  'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>
+                  {staff.role}
+                </span>
+              </div>
+
+              {/* Numbers & Badges */}
+              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                <div className="space-y-0.5">
+                  <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mr-1">
+                    Accred: {staff.accreditation_no || 'N/A'}
+                  </span>
+                  {staff.prc_license_no && staff.prc_license_no !== 'N/A' && (
+                    <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                      PRC: {staff.prc_license_no}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <button
+                    onClick={() => handleEdit(staff)}
+                    className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(staff.id, staff.name)}
+                    className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700 transition"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
+            Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"Sync Cloud"</strong>!
+          </div>
+        )}
+      </div>
+
+      {/* 🖥️ DESKTOP TABLE VIEW (Visible on tablets & desktop PCs) */}
+      <div className="hidden sm:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -600,7 +702,7 @@ export default function AdminUsersPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 font-semibold">
-                    Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"+ Add Employee"</strong> aron makasulod og staff!
+                    Walay employee records. I-click ang <strong>"Upload Excel File"</strong> o <strong>"Sync Cloud"</strong> aron makasulod og staff!
                   </td>
                 </tr>
               )}
@@ -612,7 +714,7 @@ export default function AdminUsersPage() {
       {/* EXCEL IMPORT PREVIEW MODAL */}
       {isImportOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="w-full max-w-3xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center space-x-2">
                 <FileSpreadsheet className="h-5 w-5 text-blue-600" />
@@ -687,7 +789,7 @@ export default function AdminUsersPage() {
       {/* CHANGE ADMIN PIN MODAL */}
       {isPinModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center space-x-2">
                 <Key className="h-5 w-5 text-amber-600" />
@@ -771,7 +873,7 @@ export default function AdminUsersPage() {
       {/* ADD / EDIT EMPLOYEE MODAL */}
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
             
             <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
               <h3 className="text-base font-black text-slate-900">
@@ -798,7 +900,7 @@ export default function AdminUsersPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Medical Role:</label>
                   <select
@@ -839,9 +941,7 @@ export default function AdminUsersPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Ward / Section:</label>
                   <select
@@ -862,7 +962,7 @@ export default function AdminUsersPage() {
                   </select>
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-slate-700 font-bold mb-1">Employee ID:</label>
                   <input
                     type="text"

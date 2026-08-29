@@ -30,12 +30,17 @@ export const Navbar: React.FC = () => {
   const [lanCopied, setLanCopied] = useState(false);
 
   useEffect(() => {
+    StaffService.initCloudSync();
     setCurrentStaff(StaffService.getCurrentStaff());
 
     const handleStaffChange = (e: any) => {
       if (e.detail) setCurrentStaff(e.detail);
     };
+    const handleDirUpdate = () => {
+      setCurrentStaff(StaffService.getCurrentStaff());
+    };
     window.addEventListener('cphb_staff_changed', handleStaffChange);
+    window.addEventListener('cphb_staff_directory_updated', handleDirUpdate);
 
     const updateTime = () => {
       const now = new Date();

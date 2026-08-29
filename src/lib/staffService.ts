@@ -1,4 +1,5 @@
 import { HospitalStaff } from '@/types/staff';
+import { supabase } from './supabase';
 
 export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
   {
@@ -8,6 +9,7 @@ export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
     department: 'Hospital Administration / IT',
     employee_id: 'CPHB-IT-0001',
     prc_license_no: 'DOH-CPHB-ADM-01',
+    accreditation_no: 'DOH-CPHB-ADM-01',
     specialization: 'Hospital Systems & User Access Management',
     contact_no: 'Loc 100 / Admin Desk',
     avatar_initials: 'AD',
@@ -53,6 +55,89 @@ export class AdminAuthService {
 }
 
 export class StaffService {
+  private static isCloudSyncInitialized = false;
+
+  // Initialize Realtime Cloud Sync across all mobile phones and desktop PCs
+  public static initCloudSync() {
+    if (typeof window === 'undefined') return;
+    if (this.isCloudSyncInitialized) return;
+    this.isCloudSyncInitialized = true;
+
+    // Fetch initial staff from Supabase Cloud
+    this.fetchStaffFromCloud();
+
+    // Subscribe to realtime cloud changes
+    if (supabase) {
+      try {
+        supabase
+          .channel('public:emergency_audit_logs_staff')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'emergency_audit_logs',
+              filter: 'event_type=eq.STAFF_DIRECTORY_SYNC',
+            },
+            (payload) => {
+              if (payload.new && payload.new.details && Array.isArray(payload.new.details.staff_list)) {
+                this.applyCloudStaff(payload.new.details.staff_list);
+              }
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn('Realtime cloud staff subscription error:', e);
+      }
+    }
+  }
+
+  public static async fetchStaffFromCloud(): Promise<HospitalStaff[]> {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('emergency_audit_logs')
+          .select('details')
+          .eq('event_type', 'STAFF_DIRECTORY_SYNC')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data && data.details && Array.isArray(data.details.staff_list) && data.details.staff_list.length > 0) {
+          this.applyCloudStaff(data.details.staff_list);
+          return data.details.staff_list;
+        }
+      } catch (e) {
+        console.warn('Error fetching staff directory from cloud:', e);
+      }
+    }
+    return this.getAllStaff();
+  }
+
+  private static applyCloudStaff(cloudList: HospitalStaff[]) {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(cloudList));
+      window.dispatchEvent(new CustomEvent('cphb_staff_directory_updated'));
+    } catch (e) {
+      console.warn('Error applying cloud staff list:', e);
+    }
+  }
+
+  private static async syncStaffToCloud(list: HospitalStaff[]) {
+    if (supabase) {
+      try {
+        await supabase.from('emergency_audit_logs').insert({
+          event_type: 'STAFF_DIRECTORY_SYNC',
+          actor_name: 'Hospital Administrator',
+          details: { staff_list: list, synced_at: new Date().toISOString(), total_count: list.length },
+        });
+      } catch (e) {
+        console.warn('Error broadcasting staff sync to cloud:', e);
+      }
+    }
+  }
+
   public static getAllStaff(): HospitalStaff[] {
     if (typeof window === 'undefined') return DEFAULT_CPHB_STAFF;
     try {
@@ -109,7 +194,10 @@ export class StaffService {
     try {
       localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(list));
       window.dispatchEvent(new CustomEvent('cphb_staff_directory_updated'));
-      window.dispatchEvent(new CustomEvent('cphb_staff_changed', { detail: list[0] }));
+      if (list.length > 0) {
+        window.dispatchEvent(new CustomEvent('cphb_staff_changed', { detail: list[0] }));
+      }
+      this.syncStaffToCloud(list);
     } catch (e) {
       console.warn('Error saving bulk staff:', e);
     }
@@ -131,6 +219,7 @@ export class StaffService {
 
       localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent('cphb_staff_directory_updated'));
+      this.syncStaffToCloud(updated);
     } catch (e) {
       console.warn('Error saving staff member:', e);
     }
@@ -143,6 +232,7 @@ export class StaffService {
       const updated = currentList.filter(s => s.id !== id);
       localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent('cphb_staff_directory_updated'));
+      this.syncStaffToCloud(updated);
     } catch (e) {
       console.warn('Error deleting staff member:', e);
     }
@@ -153,6 +243,7 @@ export class StaffService {
     try {
       localStorage.removeItem(STORAGE_KEY_CUSTOM_LIST);
       window.dispatchEvent(new CustomEvent('cphb_staff_directory_updated'));
+      this.syncStaffToCloud(DEFAULT_CPHB_STAFF);
     } catch (e) {
       console.warn('Error resetting staff list:', e);
     }
