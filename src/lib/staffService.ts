@@ -63,24 +63,28 @@ export class StaffService {
     if (this.isCloudSyncInitialized) return;
     this.isCloudSyncInitialized = true;
 
-    // Fetch initial staff from Supabase Cloud
+    // Fetch initial staff from Cloud API
     this.fetchStaffFromCloud();
 
-    // Subscribe to realtime cloud changes
+    // Subscribe to realtime cloud changes via Supabase WebSocket
     if (supabase) {
       try {
         supabase
-          .channel('public:emergency_audit_logs_staff')
+          .channel('public:emergency_audit_logs_staff_realtime')
           .on(
             'postgres_changes',
             {
               event: 'INSERT',
               schema: 'public',
               table: 'emergency_audit_logs',
-              filter: 'event_type=eq.STAFF_DIRECTORY_SYNC',
             },
             (payload) => {
-              if (payload.new && payload.new.details && Array.isArray(payload.new.details.staff_list)) {
+              if (
+                payload.new &&
+                payload.new.event_type === 'STAFF_DIRECTORY_SYNC' &&
+                payload.new.details &&
+                Array.isArray(payload.new.details.staff_list)
+              ) {
                 this.applyCloudStaff(payload.new.details.staff_list);
               }
             }
@@ -93,6 +97,21 @@ export class StaffService {
   }
 
   public static async fetchStaffFromCloud(): Promise<HospitalStaff[]> {
+    // 1. Try internal Next.js API endpoint (Works reliably on mobile & desktop)
+    try {
+      const res = await fetch('/api/staff', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.staff) && json.staff.length > 0) {
+          this.applyCloudStaff(json.staff);
+          return json.staff;
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching from /api/staff, trying direct Supabase:', e);
+    }
+
+    // 2. Direct Supabase Fallback
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -108,13 +127,14 @@ export class StaffService {
           return data.details.staff_list;
         }
       } catch (e) {
-        console.warn('Error fetching staff directory from cloud:', e);
+        console.warn('Error fetching staff directory from Supabase direct:', e);
       }
     }
+
     return this.getAllStaff();
   }
 
-  private static applyCloudStaff(cloudList: HospitalStaff[]) {
+  public static applyCloudStaff(cloudList: HospitalStaff[]) {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(STORAGE_KEY_CUSTOM_LIST, JSON.stringify(cloudList));
@@ -124,7 +144,19 @@ export class StaffService {
     }
   }
 
-  private static async syncStaffToCloud(list: HospitalStaff[]) {
+  public static async syncStaffToCloud(list: HospitalStaff[]) {
+    // 1. Post to /api/staff Next.js endpoint
+    try {
+      await fetch('/api/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff: list }),
+      });
+    } catch (e) {
+      console.warn('Failed posting to /api/staff:', e);
+    }
+
+    // 2. Direct Supabase Broadcast
     if (supabase) {
       try {
         await supabase.from('emergency_audit_logs').insert({
@@ -133,7 +165,7 @@ export class StaffService {
           details: { staff_list: list, synced_at: new Date().toISOString(), total_count: list.length },
         });
       } catch (e) {
-        console.warn('Error broadcasting staff sync to cloud:', e);
+        console.warn('Error broadcasting staff sync to direct Supabase:', e);
       }
     }
   }
