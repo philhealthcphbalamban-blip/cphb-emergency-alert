@@ -529,6 +529,19 @@ export default function AdminUsersPage() {
               </button>
 
               <button
+                onClick={() => {
+                  if (confirm('Sigurado ka nga paphaon ang tanang gi-upload nga records aron makasugod sa limpyo nga listahan?')) {
+                    StaffService.resetToDefaultStaff();
+                  }
+                }}
+                className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 text-xs font-bold transition flex items-center justify-center space-x-1"
+                title="Clear all records to start fresh"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Clear Data</span>
+              </button>
+
+              <button
                 onClick={handleLogoutAdmin}
                 className="py-2.5 px-3.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-black uppercase tracking-wider transition flex items-center justify-center space-x-1"
                 title="Lock Admin Control"
