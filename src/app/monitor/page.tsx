@@ -38,15 +38,69 @@ export default function MonitorPage() {
   const [resolveNotes, setResolveNotes] = useState<string>('Code cleared. Patient stabilized.');
   const [resolverName, setResolverName] = useState<string>('Dr. Santos, MD (Team Lead)');
 
+  const lastAlertsHashRef = useRef<string>('');
+  const soundEnabledRef = useRef<boolean>(true);
+  const ttsEnabledRef = useRef<boolean>(true);
   const ttsIntervalRef = useRef<any>(null);
+
+  soundEnabledRef.current = soundEnabled;
+  ttsEnabledRef.current = ttsEnabled;
+
+  const triggerEmergencyAudio = (alerts: EmergencyAlert[]) => {
+    if (alerts.length === 0) {
+      stopAllAudio();
+      return;
+    }
+
+    const priorityAlert = alerts[0];
+    let announcementText = '';
+
+    if (alerts.length === 1) {
+      const a = alerts[0];
+      const template = a.code_details?.tts_template || 'Attention all personnel: Emergency code at {location}.';
+      announcementText = template.replace('{location}', a.location_text);
+    } else {
+      const parts = alerts.map((a) => `${a.code_details?.code_name} at ${a.location_text}`);
+      announcementText = `Attention all medical personnel: Multiple concurrent codes active. ${parts.join('. Also active, ')}.`;
+    }
+
+    if (ttsEnabledRef.current) {
+      audioEngine.playHospitalAlertSequence(
+        announcementText,
+        priorityAlert.code_details?.siren_pattern || 'hi_lo',
+        soundEnabledRef.current
+      );
+    } else if (soundEnabledRef.current) {
+      audioEngine.startSiren(priorityAlert.code_details?.siren_pattern || 'hi_lo');
+    }
+
+    // Gentle repeat every 30 seconds
+    if (ttsIntervalRef.current) clearInterval(ttsIntervalRef.current);
+    ttsIntervalRef.current = setInterval(() => {
+      if (ttsEnabledRef.current && alerts.length > 0) {
+        audioEngine.playHospitalAlertSequence(
+          announcementText,
+          priorityAlert.code_details?.siren_pattern || 'hi_lo',
+          soundEnabledRef.current
+        );
+      }
+    }, 30000);
+  };
 
   const fetchActiveAlerts = async () => {
     const list = await EmergencyService.getActiveAlerts(activeHospital.id);
     setActiveAlerts(list);
-    if (list.length > 0) {
-      handleAlertsSoundAndSpeech(list);
-    } else {
-      stopAllAudio();
+
+    const newHash = list.map(a => a.id).sort().join(',');
+
+    if (newHash !== lastAlertsHashRef.current) {
+      lastAlertsHashRef.current = newHash;
+
+      if (list.length > 0) {
+        triggerEmergencyAudio(list);
+      } else {
+        stopAllAudio();
+      }
     }
   };
 
@@ -68,6 +122,7 @@ export default function MonitorPage() {
     const handleHospChange = (e: any) => {
       if (e.detail) {
         setActiveHospital(e.detail);
+        lastAlertsHashRef.current = '';
       }
     };
     window.addEventListener('cph_hospital_changed', handleHospChange);
@@ -110,39 +165,6 @@ export default function MonitorPage() {
     return () => clearInterval(timer);
   }, [activeAlerts]);
 
-  const handleAlertsSoundAndSpeech = (alerts: EmergencyAlert[]) => {
-    if (alerts.length === 0) return;
-
-    if (soundEnabled) {
-      const priorityAlert = alerts[0];
-      audioEngine.startSiren(priorityAlert.code_details?.siren_pattern || 'hi_lo');
-    }
-
-    // Announce voice alerts
-    speakAllAlerts(alerts);
-
-    // Repeat voice announcement every 15 seconds
-    if (ttsIntervalRef.current) clearInterval(ttsIntervalRef.current);
-    ttsIntervalRef.current = setInterval(() => {
-      if (ttsEnabled) {
-        speakAllAlerts(alerts);
-      }
-    }, 15000);
-  };
-
-  const speakAllAlerts = (alerts: EmergencyAlert[]) => {
-    if (alerts.length === 0) return;
-    if (alerts.length === 1) {
-      const a = alerts[0];
-      const template = a.code_details?.tts_template || 'Attention: Emergency code at {location}.';
-      audioEngine.speak(template.replace('{location}', a.location_text));
-    } else {
-      const parts = alerts.map((a) => `${a.code_details?.code_name} at ${a.location_text}`);
-      const combined = `Attention all medical personnel: Multiple concurrent codes active. ${parts.join('. Also active, ')}.`;
-      audioEngine.speak(combined);
-    }
-  };
-
   const stopAllAudio = () => {
     audioEngine.stopSiren();
     audioEngine.stopSpeech();
@@ -171,7 +193,7 @@ export default function MonitorPage() {
     } else {
       setTtsEnabled(true);
       if (activeAlerts.length > 0) {
-        speakAllAlerts(activeAlerts);
+        triggerEmergencyAudio(activeAlerts);
       }
     }
   };

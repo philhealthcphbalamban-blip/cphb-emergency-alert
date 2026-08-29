@@ -7,6 +7,7 @@ class AudioEngine {
   private isPlaying = false;
   private sirenInterval: any = null;
   private vibrationInterval: any = null;
+  private isSpeaking = false;
 
   private initContext() {
     if (!this.audioCtx && typeof window !== 'undefined') {
@@ -20,18 +21,17 @@ class AudioEngine {
     }
   }
 
-  // Mobile Device Haptic Vibration (repeats until alert is acknowledged/stopped)
+  // Mobile Device Haptic Vibration
   public startMobileVibration() {
     if (typeof window === 'undefined' || !navigator.vibrate) return;
     try {
       this.stopMobileVibration();
-      // Vibrate pattern: Vibrate 600ms, Pause 200ms, Vibrate 600ms, Pause 200ms, Vibrate 1000ms
-      navigator.vibrate([600, 200, 600, 200, 1000]);
+      navigator.vibrate([500, 200, 500, 200, 1000]);
       this.vibrationInterval = setInterval(() => {
         if (navigator.vibrate) {
-          navigator.vibrate([600, 200, 600, 200, 1000]);
+          navigator.vibrate([500, 200, 500, 200, 1000]);
         }
-      }, 3000);
+      }, 3500);
     } catch (e) {
       console.warn('Vibration API error:', e);
     }
@@ -47,11 +47,10 @@ class AudioEngine {
     }
   }
 
-  // Browser Web Notification (Displays banner on desktop/mobile lockscreen)
   public requestNotificationPermission() {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        Notification.requestPermission();
+        Notification.requestPermission().catch(() => {});
       }
     }
   }
@@ -62,7 +61,7 @@ class AudioEngine {
         try {
           new Notification(title, {
             body,
-            icon: '/favicon.ico',
+            icon: '/icon.svg',
             tag: 'cphb-emergency-alert',
             requireInteraction: true,
           });
@@ -73,34 +72,62 @@ class AudioEngine {
     }
   }
 
-  public playChime() {
-    try {
-      this.initContext();
-      if (!this.audioCtx) return;
+  // Hospital Ding-Dong Chime (Harmonious Dual Tone)
+  public playChime(): Promise<void> {
+    return new Promise((resolve) => {
+      try {
+        this.initContext();
+        if (!this.audioCtx) {
+          resolve();
+          return;
+        }
 
-      const now = this.audioCtx.currentTime;
-      const osc = this.audioCtx.createOscillator();
-      const gain = this.audioCtx.createGain();
+        const now = this.audioCtx.currentTime;
+        const osc1 = this.audioCtx.createOscillator();
+        const osc2 = this.audioCtx.createOscillator();
+        const gain1 = this.audioCtx.createGain();
+        const gain2 = this.audioCtx.createGain();
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, now); // D5
-      osc.frequency.setValueAtTime(880, now + 0.15); // A5
+        // Note 1: High F#5 (739.99 Hz) -> Note 2: D5 (587.33 Hz)
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(739.99, now);
+        gain1.gain.setValueAtTime(0, now);
+        gain1.gain.linearRampToValueAtTime(0.25, now + 0.05);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
 
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(587.33, now + 0.3);
+        gain2.gain.setValueAtTime(0, now + 0.3);
+        gain2.gain.linearRampToValueAtTime(0.25, now + 0.35);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
 
-      osc.connect(gain);
-      gain.connect(this.audioCtx.destination);
+        osc1.connect(gain1);
+        gain1.connect(this.audioCtx.destination);
 
-      osc.start(now);
-      osc.stop(now + 0.85);
-    } catch (e) {
-      console.warn('Chime audio error:', e);
-    }
+        osc2.connect(gain2);
+        gain2.connect(this.audioCtx.destination);
+
+        osc1.start(now);
+        osc1.stop(now + 0.55);
+
+        osc2.start(now + 0.3);
+        osc2.stop(now + 0.95);
+
+        setTimeout(resolve, 950);
+      } catch (e) {
+        console.warn('Chime audio error:', e);
+        resolve();
+      }
+    });
   }
 
-  public startSiren(pattern: SirenPattern = 'hi_lo') {
+  public isSirenRunning(): boolean {
+    return this.isPlaying;
+  }
+
+  public startSiren(pattern: SirenPattern = 'hi_lo', volume: number = 0.12) {
+    if (this.isPlaying) return; // Prevent duplicate overlapping oscillators
+
     try {
       this.stopSiren();
       this.initContext();
@@ -109,62 +136,44 @@ class AudioEngine {
 
       this.isPlaying = true;
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.setValueAtTime(0.18, this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
       this.gainNode.connect(this.audioCtx.destination);
 
       this.osc = this.audioCtx.createOscillator();
-      this.osc.type = 'sawtooth';
+      this.osc.type = 'sine'; // Sine wave sounds much smoother and pleasant than harsh sawtooth
 
       const now = this.audioCtx.currentTime;
 
       if (pattern === 'hi_lo') {
-        // High-Low British Ambulance / Resuscitation Chime (780Hz <-> 960Hz)
+        // Smooth Hospital Code Blue Chime (700Hz <-> 880Hz)
         let isHigh = true;
-        this.osc.frequency.setValueAtTime(960, now);
+        this.osc.frequency.setValueAtTime(880, now);
         this.sirenInterval = setInterval(() => {
-          if (!this.osc || !this.audioCtx) return;
+          if (!this.osc || !this.audioCtx || !this.isPlaying) return;
           const currTime = this.audioCtx.currentTime;
-          if (isHigh) {
-            this.osc.frequency.setValueAtTime(780, currTime);
-          } else {
-            this.osc.frequency.setValueAtTime(960, currTime);
-          }
+          this.osc.frequency.setValueAtTime(isHigh ? 700 : 880, currTime);
           isHigh = !isHigh;
-        }, 450);
+        }, 550);
       } else if (pattern === 'wail') {
-        // Continuous Fire / Code Red Wail (500Hz to 1200Hz)
-        this.osc.frequency.setValueAtTime(500, now);
+        // Continuous Code Red Wail (550Hz to 1100Hz)
+        this.osc.frequency.setValueAtTime(550, now);
         let goingUp = true;
         this.sirenInterval = setInterval(() => {
-          if (!this.osc || !this.audioCtx) return;
+          if (!this.osc || !this.audioCtx || !this.isPlaying) return;
           const currTime = this.audioCtx.currentTime;
-          if (goingUp) {
-            this.osc.frequency.linearRampToValueAtTime(1200, currTime + 1.2);
-          } else {
-            this.osc.frequency.linearRampToValueAtTime(500, currTime + 1.2);
-          }
+          this.osc.frequency.linearRampToValueAtTime(goingUp ? 1100 : 550, currTime + 1.2);
           goingUp = !goingUp;
-        }, 1250);
-      } else if (pattern === 'strobe_beep') {
-        // Rapid Security Beep (Code Pink / Infant Alert)
-        let beeping = true;
-        this.osc.frequency.setValueAtTime(1400, now);
-        this.sirenInterval = setInterval(() => {
-          if (!this.gainNode || !this.audioCtx) return;
-          const currTime = this.audioCtx.currentTime;
-          this.gainNode.gain.setValueAtTime(beeping ? 0.25 : 0, currTime);
-          beeping = !beeping;
-        }, 180);
+        }, 1300);
       } else {
-        // Pulse / Code White / Code Black
-        this.osc.frequency.setValueAtTime(600, now);
+        // Pulse Beep (650Hz)
+        this.osc.frequency.setValueAtTime(650, now);
         let on = true;
         this.sirenInterval = setInterval(() => {
-          if (!this.gainNode || !this.audioCtx) return;
+          if (!this.gainNode || !this.audioCtx || !this.isPlaying) return;
           const currTime = this.audioCtx.currentTime;
-          this.gainNode.gain.setValueAtTime(on ? 0.2 : 0, currTime);
+          this.gainNode.gain.setValueAtTime(on ? volume : 0, currTime);
           on = !on;
-        }, 500);
+        }, 450);
       }
 
       this.osc.connect(this.gainNode);
@@ -202,41 +211,67 @@ class AudioEngine {
         window.speechSynthesis.cancel();
       } catch (e) {}
     }
+    this.isSpeaking = false;
   }
 
-  public speak(text: string, repeats: number = 2) {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  public speak(text: string): Promise<void> {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        resolve();
+        return;
+      }
 
-    try {
-      window.speechSynthesis.cancel();
-      let count = 0;
+      try {
+        window.speechSynthesis.cancel();
+        this.isSpeaking = true;
 
-      const speakOnce = () => {
-        if (count >= repeats) return;
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.95;
-        utterance.pitch = 1.05;
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
         const voices = window.speechSynthesis.getVoices();
-        const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Natural')));
-        if (englishVoice) {
-          utterance.voice = englishVoice;
+        const preferredVoice = voices.find(v => 
+          v.lang.startsWith('en') && 
+          (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Female'))
+        );
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
         }
 
         utterance.onend = () => {
-          count++;
-          if (count < repeats) {
-            setTimeout(speakOnce, 800);
-          }
+          this.isSpeaking = false;
+          resolve();
+        };
+
+        utterance.onerror = () => {
+          this.isSpeaking = false;
+          resolve();
         };
 
         window.speechSynthesis.speak(utterance);
-      };
+      } catch (e) {
+        console.warn('TTS Speech error:', e);
+        this.isSpeaking = false;
+        resolve();
+      }
+    });
+  }
 
-      setTimeout(speakOnce, 250);
-    } catch (e) {
-      console.warn('TTS Speech error:', e);
+  // Combined Hospital Emergency Sequence: Chime -> Clear Speech -> Siren
+  public async playHospitalAlertSequence(speechText: string, pattern: SirenPattern = 'hi_lo', playSirenAfter: boolean = true) {
+    this.stopSiren();
+    this.stopSpeech();
+
+    // 1. Play Ding-Dong chime
+    await this.playChime();
+
+    // 2. Clear voice announcement
+    await this.speak(speechText);
+
+    // 3. Start background alert siren if requested
+    if (playSirenAfter) {
+      this.startSiren(pattern, 0.10);
     }
   }
 }
