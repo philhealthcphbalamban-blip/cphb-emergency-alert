@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "CPHB iHOMIS+ Realtime Cloud Sync",
+  "version": "1.0.0",
+  "description": "Auto-syncs live Inpatient, Emergency, and Outpatient encounters from iHOMIS+ to CPHB Rapid Emergency Alert Cloud System",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://ihomis-plus.cphb.local/*",
+    "http://ihomis-plus.cphb.local/*",
+    "http://192.168.12.*/*",
+    "http://localhost/*",
+    "https://cphb-emergency-alert.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ihomis-plus.cphb.local/*",
+        "http://ihomis-plus.cphb.local/*",
+        "http://192.168.12.*/*",
+        "http://localhost/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CPHB iHOMIS+ Live Sync Status"
+  }
+}
