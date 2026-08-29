@@ -15,7 +15,8 @@ import {
   Building,
   Wifi,
   ChevronDown,
-  UserCheck
+  UserCheck,
+  Lock
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { HospitalStaff } from '@/types/staff';
@@ -148,11 +149,21 @@ export const Navbar: React.FC = () => {
           {/* Status Indicators, LAN Share & Active Staff Switcher */}
           <div className="flex items-center space-x-2">
             
-            {/* Hospital Switcher Button */}
+            {/* Hospital Switcher Button (Locked for regular staff; Switchable for Admin) */}
             <button
-              onClick={() => setHospitalModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-xs font-bold text-blue-900 transition shadow-sm"
-              title="Click to switch active Cebu Provincial Hospital"
+              onClick={() => {
+                if (currentStaff.is_admin) {
+                  setHospitalModalOpen(true);
+                } else {
+                  alert(`🔒 Facility Locked: You are logged in as ${currentStaff.name} assigned to ${currentHospital.name}. Only Hospital Administrators can change facility dispatch.`);
+                }
+              }}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+                currentStaff.is_admin
+                  ? 'border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-900 cursor-pointer'
+                  : 'border-slate-200 bg-slate-100/90 text-slate-700 cursor-default'
+              }`}
+              title={currentStaff.is_admin ? "Click to switch active Cebu Provincial Hospital" : `Assigned Facility: ${currentHospital.name} (Locked)`}
             >
               <div 
                 className="h-5 w-5 rounded-lg flex items-center justify-center font-black text-[9px] text-white shadow-xs shrink-0"
@@ -163,7 +174,11 @@ export const Navbar: React.FC = () => {
               <span className="font-extrabold hidden sm:inline-block">
                 {currentHospital.shortName}
               </span>
-              <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+              {currentStaff.is_admin ? (
+                <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+              ) : (
+                <Lock className="h-3 w-3 text-slate-400" />
+              )}
             </button>
 
             {/* Share LAN IP Button */}

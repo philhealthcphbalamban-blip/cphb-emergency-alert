@@ -21,11 +21,20 @@ export class HospitalService {
     return CEBU_PROVINCIAL_HOSPITALS[0]; // Default CPH Balamban
   }
 
+  public static getHospitalById(id: string): HospitalInfo {
+    return CEBU_PROVINCIAL_HOSPITALS.find(h => h.id === id) || CEBU_PROVINCIAL_HOSPITALS[0];
+  }
+
   public static setActiveHospital(hospital: HospitalInfo): void {
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY_ACTIVE_HOSPITAL, hospital.id);
       window.dispatchEvent(new CustomEvent('cph_hospital_changed', { detail: hospital }));
     }
+  }
+
+  public static setActiveHospitalById(hospitalId: string): void {
+    const hosp = this.getHospitalById(hospitalId);
+    this.setActiveHospital(hosp);
   }
 
   public static getLocationsForHospital(hospitalId?: string): HospitalLocation[] {

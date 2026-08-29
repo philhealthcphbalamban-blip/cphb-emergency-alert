@@ -1,9 +1,11 @@
 import { HospitalStaff } from '@/types/staff';
 import { supabase } from './supabase';
+import { HospitalService } from './hospitalService';
 
 export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
   {
     id: 'staff-admin-1',
+    hospital_id: 'cphb',
     name: 'CPHB Hospital Admin / IT',
     role: 'Hospital Administrator',
     department: 'Hospital Administration / IT',
@@ -349,12 +351,18 @@ export class StaffService {
   }
 
   public static setCurrentStaff(staff: HospitalStaff) {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(staff));
-      window.dispatchEvent(new CustomEvent('cphb_staff_changed', { detail: staff }));
-    } catch (e) {
-      console.warn('Could not save staff to localStorage:', e);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(staff));
+        
+        // Auto-lock active hospital to the staff member's assigned hospital!
+        const targetHospId = staff.hospital_id || 'cphb';
+        HospitalService.setActiveHospitalById(targetHospId);
+
+        window.dispatchEvent(new CustomEvent('cphb_staff_changed', { detail: staff }));
+      } catch (e) {
+        console.warn('Could not save staff to localStorage:', e);
+      }
     }
   }
 

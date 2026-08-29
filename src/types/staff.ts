@@ -28,6 +28,7 @@ export type HospitalDepartment =
 
 export interface HospitalStaff {
   id: string;
+  hospital_id?: string;             // e.g. 'cphb', 'cphd', 'cphc', 'cphbogo'
   name: string;
   role: StaffRole;
   department: HospitalDepartment;
