@@ -821,21 +821,19 @@ export const MOCK_IHOMIS_PATIENTS: IHOMISPatient[] = [
   },
 ];
 
-const LOCAL_STORAGE_KEY_PATIENTS = 'ihomis_patients_live_v1';
+const LOCAL_STORAGE_KEY_PATIENTS = 'ihomis_patients_live_v2';
 
 export class IHOMISService {
   private static livePatients: IHOMISPatient[] = [...MOCK_IHOMIS_PATIENTS];
   private static isCloudSyncInitialized = false;
 
   public static getMetrics(): IHOMISMetrics {
-    const activeAdmissions = this.getPatientsByModule('ADMISSION').length;
-    const erEncounters = this.getPatientsByModule('EMERGENCY').length;
     return {
-      activeAdmissions: activeAdmissions > 50 ? activeAdmissions : IHOMIS_LIVE_METRICS.activeAdmissions,
+      activeAdmissions: IHOMIS_LIVE_METRICS.activeAdmissions,
       admissionsMale: IHOMIS_LIVE_METRICS.admissionsMale,
       admissionsFemale: IHOMIS_LIVE_METRICS.admissionsFemale,
       longStayCount: IHOMIS_LIVE_METRICS.longStayCount,
-      erEncounters: erEncounters > 50 ? erEncounters : IHOMIS_LIVE_METRICS.erEncounters,
+      erEncounters: IHOMIS_LIVE_METRICS.erEncounters,
       erMale: IHOMIS_LIVE_METRICS.erMale,
       erFemale: IHOMIS_LIVE_METRICS.erFemale,
       erForAdmission: IHOMIS_LIVE_METRICS.erForAdmission,
