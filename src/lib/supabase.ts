@@ -183,8 +183,23 @@ export class EmergencyService {
     return null;
   }
 
-  // Get all alerts history
+  // Get all alerts history with REST API, Supabase, and localStorage fallback
   public static async getAllAlerts(): Promise<EmergencyAlert[]> {
+    try {
+      const res = await fetch('/api/emergency/alerts?all=true', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.alerts) && json.alerts.length > 0) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify(json.alerts));
+            } catch (e) {}
+          }
+          return json.alerts;
+        }
+      }
+    } catch (e) {}
+
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -192,16 +207,31 @@ export class EmergencyService {
           .select('*, responders:alert_responders(*)')
           .order('triggered_at', { ascending: false });
 
-        if (data && !error) {
-          return data.map(d => ({
+        if (data && !error && data.length > 0) {
+          const list = data.map(d => ({
             ...d,
             code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
             patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
           }));
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify(list));
+            } catch (e) {}
+          }
+          return list;
         }
       } catch (e) {
         console.warn('Supabase fetch history failed:', e);
       }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('cphb_emergency_history_v2');
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch (e) {}
     }
 
     return [];
@@ -235,6 +265,12 @@ export class EmergencyService {
         const json = await res.json();
         if (json.success && json.alert) {
           this.lastAlertId = json.alert.id;
+          if (typeof window !== 'undefined') {
+            try {
+              const current = JSON.parse(localStorage.getItem('cphb_emergency_history_v2') || '[]');
+              localStorage.setItem('cphb_emergency_history_v2', JSON.stringify([json.alert, ...current.filter((x: any) => x.id !== json.alert.id)]));
+            } catch (e) {}
+          }
           this.notifyListeners(json.alert, 'TRIGGERED');
           return json.alert;
         }
@@ -274,6 +310,13 @@ export class EmergencyService {
       } catch (e) {
         console.error('Direct Supabase insert error:', e);
       }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const current = JSON.parse(localStorage.getItem('cphb_emergency_history_v2') || '[]');
+        localStorage.setItem('cphb_emergency_history_v2', JSON.stringify([newAlert, ...current.filter((x: any) => x.id !== newAlert.id)]));
+      } catch (e) {}
     }
 
     this.lastAlertId = newAlert.id;
@@ -390,6 +433,25 @@ export class EmergencyService {
       } catch (e) {
         console.error('Failed resolving in Supabase direct:', e);
       }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const current = JSON.parse(localStorage.getItem('cphb_emergency_history_v2') || '[]');
+        const updated = current.map((a: any) => {
+          if (!params.alert_id || params.alert_id === 'any' || a.id === params.alert_id) {
+            return {
+              ...a,
+              status: params.status,
+              resolved_at: new Date().toISOString(),
+              resolved_by_name: params.resolved_by_name,
+              resolution_notes: params.resolution_notes,
+            };
+          }
+          return a;
+        });
+        localStorage.setItem('cphb_emergency_history_v2', JSON.stringify(updated));
+      } catch (e) {}
     }
 
     this.lastAlertId = null;

@@ -32,13 +32,34 @@ function generateUUID(): string {
   });
 }
 
-// In-memory fallback
+// In-memory fallback history list
 let inMemoryActiveAlert: EmergencyAlert | null = null;
+let inMemoryAlertHistory: EmergencyAlert[] = [];
 
 // GET /api/emergency/alerts -> Returns active alert and recent alerts
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabase();
+    const isAll = req.nextUrl.searchParams.get('all') === 'true';
+
+    if (isAll) {
+      const { data, error } = await supabase
+        .from('emergency_alerts')
+        .select('*, responders:alert_responders(*)')
+        .order('triggered_at', { ascending: false });
+
+      if (!error && data) {
+        const formatted = data.map(d => ({
+          ...d,
+          code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
+          patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
+        }));
+        return NextResponse.json({ success: true, alerts: formatted });
+      }
+
+      return NextResponse.json({ success: true, alerts: inMemoryAlertHistory });
+    }
+
     const { data, error } = await supabase
       .from('emergency_alerts')
       .select('*, responders:alert_responders(*)')
@@ -76,7 +97,7 @@ export async function GET() {
     });
   } catch (err: any) {
     console.error('Error in GET /api/emergency/alerts:', err);
-    return NextResponse.json({ success: true, activeAlert: inMemoryActiveAlert, fallback: true });
+    return NextResponse.json({ success: true, activeAlert: inMemoryActiveAlert, alerts: inMemoryAlertHistory, fallback: true });
   }
 }
 
@@ -108,7 +129,7 @@ export async function POST(req: NextRequest) {
         code_details: EMERGENCY_CODES[newAlertRecord.code_id] || EMERGENCY_CODES.code_blue,
         responders: [],
       };
-      inMemoryActiveAlert = formattedAlert;
+      inMemoryAlertHistory = [formattedAlert, ...inMemoryAlertHistory.filter(a => a.id !== formattedAlert.id)];
 
       try {
         const { data, error } = await supabase
@@ -130,6 +151,19 @@ export async function POST(req: NextRequest) {
     if (action === 'RESOLVE') {
       inMemoryActiveAlert = null;
       const resolvedAt = new Date().toISOString();
+
+      inMemoryAlertHistory = inMemoryAlertHistory.map(a => {
+        if (!body.alert_id || body.alert_id === 'any' || a.id === body.alert_id) {
+          return {
+            ...a,
+            status: 'RESOLVED',
+            resolved_at: resolvedAt,
+            resolved_by_name: body.resolved_by_name || 'Hospital Admin',
+            resolution_notes: body.resolution_notes || 'Resolved via Command Center',
+          };
+        }
+        return a;
+      });
 
       try {
         let query = supabase.from('emergency_alerts').update({
