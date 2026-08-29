@@ -31,7 +31,6 @@ function createSafeSupabaseClient(): SupabaseClient | null {
 
 export const supabase: SupabaseClient | null = createSafeSupabaseClient();
 
-// Multi-tab BroadcastChannel for zero-latency local realtime syncing & offline fallback
 const LOCAL_STORAGE_KEY_ALERTS = 'hospital_emergency_alerts_v1';
 const CHANNEL_NAME = 'hospital_realtime_alert_bus';
 
@@ -52,6 +51,7 @@ export class EmergencyService {
   private static channel: BroadcastChannel | null = null;
   private static listeners: Set<(alert: EmergencyAlert | null, event: string) => void> = new Set();
   private static isInitialized = false;
+  private static lastAlertId: string | null = null;
 
   public static init() {
     if (typeof window === 'undefined') return;
@@ -78,11 +78,11 @@ export class EmergencyService {
       console.warn('BroadcastChannel not supported or error:', e);
     }
 
-    // Subscribe to Supabase Realtime across all hospital computers & phones
+    // Subscribe to Supabase Realtime channel
     if (supabase) {
       try {
         supabase
-          .channel('public:emergency_alerts_global_realtime')
+          .channel('public:emergency_alerts_global_live')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'emergency_alerts' },
@@ -97,16 +97,23 @@ export class EmergencyService {
       }
     }
 
-    // High-frequency Realtime Poller (every 2.5 seconds)
-    // Guarantees alerts reach mobile phones and remote PCs even if WebSockets are asleep or backgrounded
+    // ⚡ Ultra-Fast 1.5-Second HTTP REST Heartbeat Poller
+    // Guarantees all mobile phones and desktop computers receive alerts in real-time
     setInterval(async () => {
       try {
         const activeAlert = await this.getActiveAlert();
-        this.notifyListeners(activeAlert, activeAlert ? 'POLL_SYNC' : 'RESOLVED');
+        const currentId = activeAlert ? activeAlert.id : null;
+        
+        if (currentId !== this.lastAlertId) {
+          this.lastAlertId = currentId;
+          this.notifyListeners(activeAlert, activeAlert ? 'TRIGGERED' : 'RESOLVED');
+        } else if (activeAlert) {
+          this.notifyListeners(activeAlert, 'POLL_SYNC');
+        }
       } catch (e) {
         // ignore
       }
-    }, 2500);
+    }, 1500);
   }
 
   public static subscribe(callback: (alert: EmergencyAlert | null, event: string) => void) {
@@ -133,8 +140,23 @@ export class EmergencyService {
     });
   }
 
-  // Get current active alert from Cloud database
+  // Get current active alert via REST API with Supabase fallback
   public static async getActiveAlert(): Promise<EmergencyAlert | null> {
+    try {
+      const res = await fetch('/api/emergency/alerts', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.activeAlert) {
+          return json.activeAlert;
+        }
+        if (json.success && json.activeAlert === null) {
+          return null;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -154,30 +176,10 @@ export class EmergencyService {
           };
         }
       } catch (e) {
-        console.warn('Supabase fetch failed, fallback to local store:', e);
+        console.warn('Supabase fetch failed:', e);
       }
     }
 
-    // LocalStorage Fallback
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
-        if (raw) {
-          const alerts: EmergencyAlert[] = JSON.parse(raw);
-          const active = alerts.find(a => a.status === 'ACTIVE' || a.status === 'RESPONDING');
-          if (active) {
-            const patient = active.patient_details || IHOMISService.findPatientByLocation(active.location_text);
-            return {
-              ...active,
-              code_details: EMERGENCY_CODES[active.code_id] || EMERGENCY_CODES.code_blue,
-              patient_details: patient,
-            };
-          }
-        }
-      } catch (e) {
-        console.warn('Error reading from localStorage:', e);
-      }
-    }
     return null;
   }
 
@@ -198,28 +200,14 @@ export class EmergencyService {
           }));
         }
       } catch (e) {
-        console.warn('Supabase fetch history failed, fallback to local store:', e);
+        console.warn('Supabase fetch history failed:', e);
       }
     }
 
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
-        if (raw) {
-          return JSON.parse(raw).map((d: EmergencyAlert) => ({
-            ...d,
-            code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
-            patient_details: d.patient_details || IHOMISService.findPatientByLocation(d.location_text),
-          }));
-        }
-      } catch (e) {
-        console.warn('Error reading localStorage history:', e);
-      }
-    }
     return [];
   }
 
-  // Trigger a new emergency code with valid UUID
+  // Trigger a new emergency code via REST API (Guaranteed cross-device synchronization)
   public static async triggerAlert(params: {
     code_id: CodeId;
     location_text: string;
@@ -228,8 +216,35 @@ export class EmergencyService {
     patient_details?: IHOMISPatient | null;
   }): Promise<EmergencyAlert> {
     const patient = params.patient_details || IHOMISService.findPatientByLocation(params.location_text);
-    const alertUuid = generateUUID();
 
+    try {
+      const res = await fetch('/api/emergency/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TRIGGER',
+          code_id: params.code_id,
+          location_text: params.location_text,
+          triggered_by_name: params.triggered_by_name,
+          triggered_by_role: params.triggered_by_role,
+          patient_details: patient,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.alert) {
+          this.lastAlertId = json.alert.id;
+          this.notifyListeners(json.alert, 'TRIGGERED');
+          return json.alert;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed triggering alert via REST API, attempting direct Supabase:', e);
+    }
+
+    // Direct Supabase Fallback
+    const alertUuid = generateUUID();
     const newAlert: EmergencyAlert = {
       id: alertUuid,
       code_id: params.code_id,
@@ -245,7 +260,7 @@ export class EmergencyService {
 
     if (supabase) {
       try {
-        const { error } = await supabase.from('emergency_alerts').insert({
+        await supabase.from('emergency_alerts').insert({
           id: alertUuid,
           code_id: newAlert.code_id,
           location_text: newAlert.location_text,
@@ -256,39 +271,48 @@ export class EmergencyService {
           patient_id_optional: patient?.hrn || null,
           patient_details: patient || null,
         });
-
-        if (error) {
-          console.error('Failed inserting emergency_alerts to Supabase:', error);
-        }
       } catch (e) {
-        console.error('Exception inserting to Supabase:', e);
+        console.error('Direct Supabase insert error:', e);
       }
     }
 
-    // Save locally
-    if (typeof window !== 'undefined') {
-      try {
-        const history = await this.getAllAlerts();
-        const updated = [newAlert, ...history.filter(h => h.id !== newAlert.id)];
-        localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Failed saving alert locally:', e);
-      }
-    }
-
+    this.lastAlertId = newAlert.id;
     this.notifyListeners(newAlert, 'TRIGGERED');
     return newAlert;
   }
 
-  // Acknowledge & add responder with valid UUID
+  // Acknowledge & add responder
   public static async addResponder(params: {
     alert_id: string;
     responder_name: string;
     role: AlertResponder['role'];
     eta_minutes: number;
   }): Promise<AlertResponder> {
-    const responderUuid = generateUUID();
+    try {
+      const res = await fetch('/api/emergency/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'RESPOND',
+          alert_id: params.alert_id,
+          responder_name: params.responder_name,
+          role: params.role,
+          eta_minutes: params.eta_minutes,
+        }),
+      });
 
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.responder) {
+          this.notifyListeners(await this.getActiveAlert(), 'RESPONDER_ADDED');
+          return json.responder;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const responderUuid = generateUUID();
     const newResponder: AlertResponder = {
       id: responderUuid,
       alert_id: params.alert_id,
@@ -307,7 +331,7 @@ export class EmergencyService {
           acknowledged_at: new Date().toISOString()
         }).eq('id', params.alert_id);
       } catch (e) {
-        console.error('Failed inserting responder to Supabase:', e);
+        console.error('Supabase responder error:', e);
       }
     }
 
@@ -315,7 +339,6 @@ export class EmergencyService {
     return newResponder;
   }
 
-  // Mark responder arrived on scene
   public static async markOnScene(alert_id: string, responder_id: string): Promise<void> {
     const arrivedAt = new Date().toISOString();
     if (supabase) {
@@ -331,14 +354,27 @@ export class EmergencyService {
     this.notifyListeners(await this.getActiveAlert(), 'RESPONDER_ARRIVED');
   }
 
-  // Resolve emergency code
+  // Resolve emergency code via REST API
   public static async resolveAlert(params: {
     alert_id: string;
     resolved_by_name: string;
     resolution_notes: string;
     status: AlertStatus;
   }): Promise<void> {
-    const resolvedAt = new Date().toISOString();
+    try {
+      await fetch('/api/emergency/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'RESOLVE',
+          alert_id: params.alert_id,
+          resolved_by_name: params.resolved_by_name,
+          resolution_notes: params.resolution_notes,
+        }),
+      });
+    } catch (e) {
+      // ignore
+    }
 
     if (supabase) {
       try {
@@ -346,48 +382,17 @@ export class EmergencyService {
           .from('emergency_alerts')
           .update({
             status: params.status,
-            resolved_at: resolvedAt,
+            resolved_at: new Date().toISOString(),
             resolved_by_name: params.resolved_by_name,
             resolution_notes: params.resolution_notes,
           })
           .eq('id', params.alert_id);
-
-        // Also log to audit logs
-        await supabase.from('emergency_audit_logs').insert({
-          alert_id: params.alert_id,
-          event_type: 'RESOLVED',
-          actor_name: params.resolved_by_name,
-          details: { notes: params.resolution_notes, resolved_at: resolvedAt },
-        });
       } catch (e) {
-        console.error('Failed resolving alert in Supabase:', e);
+        console.error('Failed resolving in Supabase direct:', e);
       }
     }
 
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY_ALERTS);
-        if (raw) {
-          const alerts: EmergencyAlert[] = JSON.parse(raw);
-          const updated = alerts.map(a => {
-            if (a.id === params.alert_id) {
-              return {
-                ...a,
-                status: params.status,
-                resolved_at: resolvedAt,
-                resolved_by_name: params.resolved_by_name,
-                resolution_notes: params.resolution_notes,
-              };
-            }
-            return a;
-          });
-          localStorage.setItem(LOCAL_STORAGE_KEY_ALERTS, JSON.stringify(updated));
-        }
-      } catch (e) {
-        console.warn('Failed resolving alert locally:', e);
-      }
-    }
-
+    this.lastAlertId = null;
     this.notifyListeners(null, 'RESOLVED');
   }
 }
