@@ -154,7 +154,7 @@ export default function CommandHubPage() {
             <span>ER Consultations</span>
           </div>
           <div className="text-3xl font-black text-slate-900 mt-1">{metrics.erEncounters}</div>
-          <span className="text-[10px] text-red-700 font-bold">293 Live Encounters • Emergency</span>
+          <span className="text-[10px] text-red-700 font-bold">294 Live Encounters • Emergency</span>
         </Link>
 
         {/* Card 3: Long Stay Admissions */}
