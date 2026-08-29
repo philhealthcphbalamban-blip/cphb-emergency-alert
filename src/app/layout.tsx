@@ -6,6 +6,13 @@ import { GlobalAlertModal } from '@/components/GlobalAlertModal';
 export const metadata: Metadata = {
   title: 'Hospital Rapid Emergency Alert System | CPH Balamban & iHOMIS Plus',
   description: 'Ultra-fast hospital emergency code broadcasting and responder management system synced with iHOMIS Plus.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
