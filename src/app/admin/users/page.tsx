@@ -116,9 +116,10 @@ export default function AdminUsersPage() {
     }, 600);
   };
 
-  const handleVerifyPin = (e: React.FormEvent) => {
+  const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (AdminAuthService.verifyPin(adminPin)) {
+    const isValid = await AdminAuthService.verifyPinAsync(adminPin);
+    if (isValid) {
       setIsAuthenticated(true);
       sessionStorage.setItem('cphb_admin_unlocked', 'true');
       setIsPinModalOpenForLogin(false);
@@ -135,7 +136,8 @@ export default function AdminUsersPage() {
 
   const handleChangePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!AdminAuthService.verifyPin(oldPin)) {
+    const isOldValid = await AdminAuthService.verifyPinAsync(oldPin);
+    if (!isOldValid) {
       setPinChangeMsg({ text: 'Sayop ang kasamtangang (Current) PIN!', isError: true });
       return;
     }

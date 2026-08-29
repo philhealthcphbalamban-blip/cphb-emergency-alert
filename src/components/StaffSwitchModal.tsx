@@ -89,9 +89,10 @@ export const StaffSwitchModal: React.FC<Props> = ({
     onClose();
   };
 
-  const handleVerifyAdminPin = (e: React.FormEvent) => {
+  const handleVerifyAdminPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (AdminAuthService.verifyPin(adminPinInput)) {
+    const isValid = await AdminAuthService.verifyPinAsync(adminPinInput);
+    if (isValid) {
       sessionStorage.setItem('cphb_admin_unlocked', 'true');
       if (pendingAdminStaff) {
         onSelectStaff(pendingAdminStaff);
