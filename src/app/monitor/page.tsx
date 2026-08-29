@@ -284,17 +284,6 @@ export default function MonitorPage() {
 
           </div>
 
-          {/* iHOMIS LIVE PATIENT RECORD SECTION */}
-          {patient && (
-            <div className="space-y-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center">
-                <Building className="h-4 w-4 text-blue-600 mr-1.5" />
-                iHOMIS Plus Admitted Patient Context (Live at Scene)
-              </span>
-              <IHOMISPatientCard patient={patient} />
-            </div>
-          )}
-
           {/* RESPONDERS DISPATCH BOARD & LIVE ACTIONS */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             

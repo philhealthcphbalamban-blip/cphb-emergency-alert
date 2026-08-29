@@ -238,14 +238,6 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                {/* Patient Info if available */}
-                {alert.patient_details && (
-                  <div className="text-xs bg-blue-50/70 p-3 rounded-xl border border-blue-100 text-blue-950 font-medium">
-                    <span className="font-black text-blue-900">Patient:</span> {alert.patient_details.patient_name} (HRN: {alert.patient_details.hrn}) • 
-                    <span className="font-black text-blue-900 ml-1">Dx:</span> {alert.patient_details.admitting_diagnosis}
-                  </div>
-                )}
-
                 {/* Meta details & responders */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <div>

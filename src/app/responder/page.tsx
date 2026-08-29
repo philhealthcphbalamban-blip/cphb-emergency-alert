@@ -204,17 +204,6 @@ export default function ResponderPage() {
             </div>
           </div>
 
-          {/* Patient Details (iHOMIS) */}
-          {patient && (
-            <div className="space-y-1.5 pt-1">
-              <span className="text-[11px] font-black uppercase text-blue-800 flex items-center">
-                <Building className="h-3.5 w-3.5 mr-1" />
-                iHOMIS Patient Details:
-              </span>
-              <IHOMISPatientCard patient={patient} />
-            </div>
-          )}
-
           {/* Responder Action State */}
           {!hasResponded ? (
             <div className="space-y-3 pt-2">

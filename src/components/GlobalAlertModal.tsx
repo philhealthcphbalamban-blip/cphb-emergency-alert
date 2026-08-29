@@ -62,7 +62,7 @@ export const GlobalAlertModal: React.FC = () => {
     const codeName = alert.code_details?.code_name || 'EMERGENCY CODE';
     audioEngine.triggerPushNotification(
       `🚨 ${codeName} - ${alert.location_text}`,
-      `Patient: ${alert.patient_details?.patient_name || 'Emergency Patient'}. Immediate attention required!`
+      `Immediate Code Team deployment required at ${alert.location_text}!`
     );
   };
 
@@ -124,7 +124,7 @@ export const GlobalAlertModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Location & Patient Info Box */}
+        {/* Location Info Box */}
         <div className="mt-3.5 p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1.5 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-white/70 font-semibold">Location:</span>
@@ -132,14 +132,6 @@ export const GlobalAlertModal: React.FC = () => {
               {activeAlert.location_text}
             </span>
           </div>
-          {activeAlert.patient_details && (
-            <div className="flex items-center justify-between pt-1 border-t border-white/10">
-              <span className="text-white/70 font-semibold">Patient:</span>
-              <span className="font-black text-white font-mono uppercase truncate max-w-[220px]">
-                {activeAlert.patient_details.patient_name}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Clean Functional Action Buttons */}

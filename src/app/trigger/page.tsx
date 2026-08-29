@@ -317,36 +317,17 @@ function TriggerPadContent() {
               })}
             </div>
 
-            {/* iHOMIS Live Matched Patient Preview */}
+            {/* Ward Emergency Location Summary */}
             <div className="mt-6 pt-4 border-t border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center">
+              <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 space-y-2 shadow-sm">
+                <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center">
                   <Building className="h-4 w-4 text-blue-600 mr-1.5" />
-                  iHOMIS Live Patient Context
+                  Hospital Location Dispatch Protocol
                 </span>
-                <Link
-                  href="/ihomis"
-                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center"
-                >
-                  <span>Browse All Patients</span>
-                  <ExternalLink className="h-3 w-3 ml-1" />
-                </Link>
+                <p className="text-xs text-blue-950 font-medium leading-relaxed">
+                  Emergency broadcasts are strictly location-based pursuant to the <strong>Data Privacy Act of 2012 (RA 10173)</strong>. Responders will be dispatched directly to the selected Ward, Room, and Bed.
+                </p>
               </div>
-
-              {matchedPatient ? (
-                <div className="space-y-2">
-                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center space-x-2 text-xs font-bold text-emerald-800">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <span>Auto-Detected: <strong>{matchedPatient.patient_name}</strong> in <strong>{matchedPatient.ward_name} ({matchedPatient.room_bed})</strong></span>
-                  </div>
-                  <IHOMISPatientCard patient={matchedPatient} />
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-white border border-dashed border-slate-300 text-center text-xs text-slate-500 shadow-sm">
-                  <p className="font-bold text-slate-700">No active patient currently matched for this bed.</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Emergency will broadcast as general room location.</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -408,11 +389,6 @@ function TriggerPadContent() {
               <p className="text-xs font-black text-blue-900 mt-1">
                 📍 {finalLocationString}
               </p>
-              {matchedPatient && (
-                <p className="text-xs font-bold text-emerald-800 mt-1">
-                  👤 Patient: <strong>{matchedPatient.patient_name}</strong> ({matchedPatient.code_status})
-                </p>
-              )}
             </div>
 
             {/* Step 4: Slide to Trigger Slider */}
