@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { GlobalAlertModal } from '@/components/GlobalAlertModal';
+import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 
 export const metadata: Metadata = {
   title: {
@@ -32,6 +33,7 @@ export default function RootLayout({
             {children}
           </main>
           <GlobalAlertModal />
+          <ServiceWorkerRegister />
         </div>
       </body>
     </html>
