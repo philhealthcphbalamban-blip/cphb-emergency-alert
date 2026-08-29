@@ -50,6 +50,7 @@ export default function AdminUsersPage() {
   const [formDept, setFormDept] = useState<HospitalDepartment>('Medical Section');
   const [formEmpId, setFormEmpId] = useState('');
   const [formAccredNo, setFormAccredNo] = useState('');
+  const [formPrcNo, setFormPrcNo] = useState('');
   const [formSpecialization, setFormSpecialization] = useState('');
   const [formContact, setFormContact] = useState('');
   const [formColor, setFormColor] = useState('#2563eb');
@@ -129,6 +130,7 @@ export default function AdminUsersPage() {
     setFormDept('Medical Section');
     setFormEmpId(`CPHB-${Math.floor(1000 + Math.random() * 9000)}`);
     setFormAccredNo('');
+    setFormPrcNo('');
     setFormSpecialization('');
     setFormContact('Loc 101');
     setFormColor('#2563eb');
@@ -141,7 +143,8 @@ export default function AdminUsersPage() {
     setFormRole(staff.role);
     setFormDept(staff.department);
     setFormEmpId(staff.employee_id);
-    setFormAccredNo(staff.accreditation_no || staff.prc_license_no);
+    setFormAccredNo(staff.accreditation_no || '');
+    setFormPrcNo(staff.prc_license_no || '');
     setFormSpecialization(staff.specialization || '');
     setFormContact(staff.contact_no || '');
     setFormColor(staff.color_hex);
@@ -301,7 +304,7 @@ export default function AdminUsersPage() {
       role: formRole,
       department: formDept,
       employee_id: formEmpId,
-      prc_license_no: formAccredNo || 'N/A',
+      prc_license_no: formPrcNo || 'N/A',
       accreditation_no: formAccredNo || 'N/A',
       specialization: formSpecialization,
       contact_no: formContact,
@@ -509,7 +512,7 @@ export default function AdminUsersPage() {
                 <th className="py-3 px-3">Name & Title</th>
                 <th className="py-3 px-3">Role</th>
                 <th className="py-3 px-3">Department / Ward</th>
-                <th className="py-3 px-3">Accreditation No</th>
+                <th className="py-3 px-3">Accreditation / PRC No</th>
                 <th className="py-3 px-3">Employee ID</th>
                 <th className="py-3 px-3 text-center">Action</th>
               </tr>
@@ -553,11 +556,18 @@ export default function AdminUsersPage() {
                       {staff.department}
                     </td>
 
-                    {/* Accreditation No */}
+                    {/* Accreditation & PRC No */}
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="font-mono text-xs font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                        {staff.accreditation_no || staff.prc_license_no || 'N/A'}
-                      </span>
+                      <div className="space-y-0.5">
+                        <span className="font-mono text-[11px] font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 block">
+                          Accred: {staff.accreditation_no || 'N/A'}
+                        </span>
+                        {staff.prc_license_no && staff.prc_license_no !== 'N/A' && (
+                          <span className="font-mono text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded border border-emerald-200 block">
+                            PRC: {staff.prc_license_no}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Employee ID */}
@@ -815,6 +825,17 @@ export default function AdminUsersPage() {
                     value={formAccredNo}
                     onChange={(e) => setFormAccredNo(e.target.value)}
                     placeholder="e.g. 0129845 / PHIC ACC"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">PRC License No. (Manual Entry):</label>
+                  <input
+                    type="text"
+                    value={formPrcNo}
+                    onChange={(e) => setFormPrcNo(e.target.value)}
+                    placeholder="e.g. 0128491"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
