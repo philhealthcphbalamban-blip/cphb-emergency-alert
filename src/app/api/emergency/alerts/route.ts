@@ -76,22 +76,22 @@ export async function GET(req: NextRequest) {
       .in('status', ['ACTIVE', 'RESPONDING'])
       .order('triggered_at', { ascending: false });
 
-    if (hospitalId === 'cphb') {
-      query = query.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
-    } else {
-      query = query.eq('hospital_id', hospitalId);
-    }
-
     const { data, error } = await query;
 
     let activeAlerts: EmergencyAlert[] = [];
-    if (!error && data && data.length > 0) {
-      activeAlerts = data.map(d => ({
+    if (!error && data) {
+      const filtered = data.filter(d => {
+        const h = d.hospital_id || 'cphb';
+        return hospitalId === 'cphb' ? (h === 'cphb' || !d.hospital_id) : h === hospitalId;
+      });
+      activeAlerts = filtered.map(d => ({
         ...d,
         code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
         patient_details: d.patient_details || null,
       }));
-    } else {
+    }
+
+    if (activeAlerts.length === 0) {
       activeAlerts = inMemoryAlertHistory.filter(
         a => (a.hospital_id || 'cphb') === hospitalId && (a.status === 'ACTIVE' || a.status === 'RESPONDING')
       );
@@ -146,15 +146,12 @@ export async function POST(req: NextRequest) {
       inMemoryAlertHistory = [formattedAlert, ...inMemoryAlertHistory.filter(a => a.id !== formattedAlert.id)];
 
       try {
-        const { data, error } = await supabase
-          .from('emergency_alerts')
-          .insert(newAlertRecord)
-          .select()
-          .single();
-
-        if (!error && data) {
-          formattedAlert.id = data.id;
-        }
+        await supabase.from('emergency_alerts').insert(newAlertRecord);
+        await supabase.from('emergency_audit_logs').insert({
+          event_type: 'TRIGGERED',
+          actor_name: body.triggered_by_name || 'Hospital Staff',
+          details: formattedAlert,
+        });
       } catch (dbErr) {
         console.warn('Supabase DB insert warning (fallback used):', dbErr);
       }

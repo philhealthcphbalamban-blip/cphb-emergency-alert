@@ -187,6 +187,20 @@ export class EmergencyService {
       }
     }
 
+    // Multi-Tab & Offline LocalStorage Fallback (Guarantees TV Monitor and tabs stay synced instantly)
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`cph_emergency_history_${hid}`);
+        if (stored) {
+          const parsed: EmergencyAlert[] = JSON.parse(stored);
+          const activeLocal = parsed.filter(a => a.status === 'ACTIVE' || a.status === 'RESPONDING');
+          if (activeLocal.length > 0) {
+            return activeLocal;
+          }
+        }
+      } catch (e) {}
+    }
+
     return [];
   }
 
