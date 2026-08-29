@@ -12,13 +12,13 @@ export const IHOMIS_CONFIG: IHOMISConfig = {
 
 // Exact Live Encounter Metrics from CPH Balamban iHOMIS Plus System
 export const IHOMIS_LIVE_METRICS: IHOMISMetrics = {
-  activeAdmissions: 172,
-  admissionsMale: 75,
-  admissionsFemale: 97,
-  longStayCount: 55,
-  erEncounters: 294,
+  activeAdmissions: 170,
+  admissionsMale: 74,
+  admissionsFemale: 96,
+  longStayCount: 53,
+  erEncounters: 295,
   erMale: 4,
-  erFemale: 11,
+  erFemale: 12,
   erForAdmission: 0,
 };
 
