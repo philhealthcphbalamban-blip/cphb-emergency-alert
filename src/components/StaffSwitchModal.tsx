@@ -83,6 +83,8 @@ export const StaffSwitchModal: React.FC<Props> = ({
       return;
     }
 
+    // When switching to Doctor or Nurse, IMMEDIATELY REVOKE Admin Access!
+    sessionStorage.removeItem('cphb_admin_unlocked');
     onSelectStaff(staff);
     onClose();
   };
@@ -90,6 +92,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
   const handleVerifyAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (AdminAuthService.verifyPin(adminPinInput)) {
+      sessionStorage.setItem('cphb_admin_unlocked', 'true');
       if (pendingAdminStaff) {
         onSelectStaff(pendingAdminStaff);
       }
