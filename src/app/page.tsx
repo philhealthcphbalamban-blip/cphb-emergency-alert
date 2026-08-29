@@ -134,47 +134,47 @@ export default function CommandHubPage() {
         </div>
       </div>
 
-      {/* Hospital Realtime Census Overview Metrics Bar (Exact Match with Live iHOMIS Plus System) */}
+      {/* Hospital Emergency Preparedness & Location Readiness (100% Data Privacy Compliant) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         
-        {/* Card 1: Inpatient Admissions */}
-        <Link href="/ihomis" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-emerald-500 hover:shadow-md transition">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
-            <Bed className="h-4 w-4 text-emerald-600" />
-            <span>Inpatient Admissions</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">{metrics?.activeAdmissions ?? 166}</div>
-          <span className="text-[10px] text-emerald-700 font-bold">166 Admitted Inpatients • 11 Wards</span>
-        </Link>
-
-        {/* Card 2: ER Consultations */}
-        <Link href="/ihomis" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-red-500 hover:shadow-md transition">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
-            <ShieldAlert className="h-4 w-4 text-red-600" />
-            <span>ER Consultations</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">{metrics?.erEncounters ?? 295}</div>
-          <span className="text-[10px] text-red-700 font-bold">295 Live Encounters • Emergency</span>
-        </Link>
-
-        {/* Card 3: Long Stay Admissions */}
-        <Link href="/ihomis" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-amber-500 hover:shadow-md transition">
-          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
-            <Clock className="h-4 w-4 text-amber-600" />
-            <span>Long Stay Admissions</span>
-          </div>
-          <div className="text-3xl font-black text-slate-900 mt-1">{metrics?.longStayCount ?? 52}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">52 Patients &ge; 7 Days</span>
-        </Link>
-
-        {/* Card 4: Bed Capacity */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+        {/* Card 1: Monitored Hospital Wards */}
+        <Link href="/trigger" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-500 hover:shadow-md transition">
           <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
             <Building className="h-4 w-4 text-blue-600" />
-            <span>Hospital Capacity</span>
+            <span>Monitored Wards</span>
           </div>
-          <div className="text-3xl font-black text-blue-700 mt-1">378 Beds</div>
-          <span className="text-[10px] text-blue-700 font-bold">53 Rooms • 11 Wards Active</span>
+          <div className="text-3xl font-black text-slate-900 mt-1">11 Wards</div>
+          <span className="text-[10px] text-blue-700 font-bold">ICU, NICU, ER, Wards 1-5, OR/DR</span>
+        </Link>
+
+        {/* Card 2: Emergency Bed Locations */}
+        <Link href="/trigger" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-emerald-500 hover:shadow-md transition">
+          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
+            <Bed className="h-4 w-4 text-emerald-600" />
+            <span>Bed Locations</span>
+          </div>
+          <div className="text-3xl font-black text-slate-900 mt-1">378 Beds</div>
+          <span className="text-[10px] text-emerald-700 font-bold">53 Rooms & Triage Bays Monitored</span>
+        </Link>
+
+        {/* Card 3: Rapid Response Teams */}
+        <Link href="/responder" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-red-500 hover:shadow-md transition">
+          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
+            <ShieldAlert className="h-4 w-4 text-red-600" />
+            <span>24/7 Response Teams</span>
+          </div>
+          <div className="text-3xl font-black text-slate-900 mt-1">4 Teams</div>
+          <span className="text-[10px] text-red-700 font-bold">Code Blue, Red, Pink, Violet On-Duty</span>
+        </Link>
+
+        {/* Card 4: Data Privacy Protection */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center space-x-1.5 text-slate-500 text-[10px] font-black uppercase tracking-wider">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span>Data Privacy (RA 10173)</span>
+          </div>
+          <div className="text-3xl font-black text-emerald-700 mt-1">Protected</div>
+          <span className="text-[10px] text-emerald-700 font-bold">100% Ward & Location-Based Dispatch</span>
         </div>
       </div>
 
@@ -328,9 +328,9 @@ export default function CommandHubPage() {
             </p>
           </Link>
 
-          {/* Station 4: iHOMIS Census */}
+          {/* Station 4: Hospital Wards & Privacy */}
           <Link 
-            href="/ihomis"
+            href="/trigger"
             className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-purple-500 hover:shadow-md transition group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
@@ -340,10 +340,10 @@ export default function CommandHubPage() {
               <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-1 transition" />
             </div>
             <h4 className="font-extrabold text-sm text-slate-900 mt-3 group-hover:text-purple-600 transition">
-              4. iHOMIS Census
+              4. Hospital Wards & Rooms
             </h4>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Browse 172 Inpatients & 293 ER Encounters matching CPH Balamban with 1-click emergency dispatch.
+              11 Monitored Wards & 378 Bed Locations with 100% Data Privacy (RA 10173) protection.
             </p>
           </Link>
 
