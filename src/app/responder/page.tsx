@@ -105,7 +105,7 @@ export default function ResponderPage() {
   const patient = activeAlert?.patient_details;
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-6 space-y-5">
+    <div className="w-full max-w-4xl mx-auto px-4 py-6 pb-28 space-y-5">
       
       {/* Top Header */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">

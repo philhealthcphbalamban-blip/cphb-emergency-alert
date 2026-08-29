@@ -72,8 +72,8 @@ export const GlobalAlertModal: React.FC = () => {
     audioEngine.stopSiren();
   };
 
-  // Don't show modal if on /monitor page (which already has full TV UI), or if dismissed, or if no active alert
-  if (pathname === '/monitor' || !activeAlert || dismissed) {
+  // Don't show modal if on /monitor or /responder page (which already has full action UI), or if dismissed, or if no active alert
+  if (pathname === '/monitor' || pathname === '/responder' || !activeAlert || dismissed) {
     return null;
   }
 
