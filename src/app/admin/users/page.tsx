@@ -46,10 +46,10 @@ export default function AdminUsersPage() {
 
   // Form Fields
   const [formName, setFormName] = useState('');
-  const [formRole, setFormRole] = useState<StaffRole>('Staff Nurse');
-  const [formDept, setFormDept] = useState<HospitalDepartment>('Emergency Department (ER)');
+  const [formRole, setFormRole] = useState<StaffRole>('Physician');
+  const [formDept, setFormDept] = useState<HospitalDepartment>('Medical Section');
   const [formEmpId, setFormEmpId] = useState('');
-  const [formPrcLic, setFormPrcLic] = useState('');
+  const [formAccredNo, setFormAccredNo] = useState('');
   const [formSpecialization, setFormSpecialization] = useState('');
   const [formContact, setFormContact] = useState('');
   const [formColor, setFormColor] = useState('#2563eb');
@@ -66,7 +66,6 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    // Check if session already unlocked admin
     const isUnlocked = sessionStorage.getItem('cphb_admin_unlocked');
     if (isUnlocked === 'true') {
       setIsAuthenticated(true);
@@ -126,10 +125,10 @@ export default function AdminUsersPage() {
   const handleOpenAdd = () => {
     setEditingId(null);
     setFormName('');
-    setFormRole('Staff Nurse');
-    setFormDept('Emergency Department (ER)');
+    setFormRole('Physician');
+    setFormDept('Medical Section');
     setFormEmpId(`CPHB-${Math.floor(1000 + Math.random() * 9000)}`);
-    setFormPrcLic('');
+    setFormAccredNo('');
     setFormSpecialization('');
     setFormContact('Loc 101');
     setFormColor('#2563eb');
@@ -142,7 +141,7 @@ export default function AdminUsersPage() {
     setFormRole(staff.role);
     setFormDept(staff.department);
     setFormEmpId(staff.employee_id);
-    setFormPrcLic(staff.prc_license_no);
+    setFormAccredNo(staff.accreditation_no || staff.prc_license_no);
     setFormSpecialization(staff.specialization || '');
     setFormContact(staff.contact_no || '');
     setFormColor(staff.color_hex);
@@ -155,7 +154,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  // Excel File Upload Handler
+  // Excel File Upload Handler with Accreditation No & Smart Role Detection
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -175,17 +174,60 @@ export default function AdminUsersPage() {
         }
 
         const mapped: HospitalStaff[] = rawJson.map((row, idx) => {
-          const rawName = row['NAME'] || row['Name'] || row['EMPLOYEE_NAME'] || row['Personnel Name'] || row['Personnel'] || `Staff ${idx + 1}`;
-          const rawPrc = String(row['PRC_LICENSE'] || row['PRC'] || row['PRC NO'] || row['PRC_NO'] || row['License'] || row['LICENSE'] || '0000000');
-          const rawRole = String(row['ROLE'] || row['Role'] || row['POSITION'] || row['Designation'] || 'Staff Nurse');
-          const rawDept = String(row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || 'Emergency Department (ER)');
-          const rawEmpId = String(row['EMPLOYEE_ID'] || row['ID'] || row['Emp ID'] || `CPHB-${1000 + idx}`);
-          const rawSpec = String(row['SPECIALIZATION'] || row['Specialization'] || row['Scope'] || '');
-          const rawContact = String(row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Hospital Desk');
+          // Flexible Column Lookup
+          const rawName = String(
+            row['NAME'] || row['Name'] || row['EMPLOYEE_NAME'] || row['Personnel Name'] || row['Personnel'] || row['Doctor Name'] || `Staff ${idx + 1}`
+          ).trim();
 
-          const isDoc = rawRole.toLowerCase().includes('doctor') || rawRole.toLowerCase().includes('physician') || rawName.includes('Dr.') || rawName.includes('MD');
+          const rawAccred = String(
+            row['ACCREDITATION NO.'] || 
+            row['ACCREDITATION NO'] || 
+            row['ACCREDITATION'] || 
+            row['Accreditation No.'] || 
+            row['Accreditation No'] || 
+            row['Accreditation'] || 
+            row['ACCRED'] || 
+            row['Accred'] || 
+            row['PAN'] || 
+            row['PRC'] || 
+            row['PRC NO'] || 
+            row['PRC_NO'] || 
+            row['License'] || 
+            'N/A'
+          ).trim();
 
-          const initials = String(rawName)
+          const rawDept = String(
+            row['DEPARTMENT'] || row['Department'] || row['WARD'] || row['Ward'] || row['SECTION'] || row['Section'] || 'Medical Section'
+          ).trim();
+
+          const rawEmpId = String(
+            row['EMPLOYEE_ID'] || row['Employee ID'] || row['ID'] || row['Emp ID'] || `CPHB-${1000 + idx}`
+          ).trim();
+
+          const rawRole = String(
+            row['ROLE'] || row['Role'] || row['POSITION'] || row['Position'] || row['Designation'] || ''
+          ).trim();
+
+          const rawSpec = String(
+            row['SPECIALIZATION'] || row['Specialization'] || row['Scope'] || ''
+          ).trim();
+
+          const rawContact = String(
+            row['CONTACT'] || row['Contact'] || row['Phone'] || 'Local Desk'
+          ).trim();
+
+          // Smart Role Determination (If DR. in name, or physician/doctor in role -> Physician)
+          const isDoc = 
+            rawName.toUpperCase().startsWith('DR.') || 
+            rawName.toUpperCase().startsWith('DR ') || 
+            rawName.toUpperCase().includes(' MD') || 
+            rawRole.toLowerCase().includes('doctor') || 
+            rawRole.toLowerCase().includes('physician') || 
+            rawDept.toLowerCase().includes('medical');
+
+          const finalRole: StaffRole = isDoc ? 'Physician' : (rawRole as any || 'Staff Nurse');
+
+          const initials = rawName
             .replace(/Dr\.|MD|RN|Nurse|,/gi, '')
             .trim()
             .split(' ')
@@ -193,15 +235,16 @@ export default function AdminUsersPage() {
             .slice(0, 2)
             .map(w => w[0])
             .join('')
-            .toUpperCase() || 'CP';
+            .toUpperCase() || (isDoc ? 'MD' : 'RN');
 
           return {
             id: `staff-excel-${Date.now()}-${idx}`,
             name: rawName,
-            role: isDoc ? 'Physician' : 'Staff Nurse',
-            department: (rawDept as any) || 'Emergency Department (ER)',
+            role: finalRole,
+            department: rawDept || (isDoc ? 'Medical Section' : 'Nursing Section'),
             employee_id: rawEmpId,
-            prc_license_no: rawPrc,
+            prc_license_no: rawAccred,
+            accreditation_no: rawAccred,
             specialization: rawSpec,
             contact_no: rawContact,
             avatar_initials: initials,
@@ -215,7 +258,7 @@ export default function AdminUsersPage() {
         });
 
         setParsedRows(mapped);
-        setImportStatus(`Na-read ang ${mapped.length} ka employees gikan sa Excel!`);
+        setImportStatus(`Na-read ang ${mapped.length} ka personnel gikan sa Excel!`);
         setIsImportOpen(true);
       } catch (err) {
         setImportStatus('Error sa pagbasa sa Excel file. Siguroha nga valid .xlsx o .csv file!');
@@ -229,22 +272,24 @@ export default function AdminUsersPage() {
     StaffService.setBulkStaff(parsedRows);
     setIsImportOpen(false);
     setParsedRows([]);
-    alert(`Success! Na-import ug na-save ang ${parsedRows.length} ka tinuod nga employees gikan sa Excel!`);
+    alert(`Success! Na-import ug na-save ang ${parsedRows.length} ka personnel kauban ilang Accreditation No. gikan sa Excel!`);
   };
 
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName || !formPrcLic) {
-      alert('Palihug isulod ang Ngalan ug PRC License Number!');
+    if (!formName) {
+      alert('Palihug isulod ang Ngalan!');
       return;
     }
 
-    const isDoc = formRole === 'Physician' || formRole === 'Resident Physician' || formRole === 'Anesthesiologist';
+    const isDoc = formRole === 'Physician' || formRole === 'Resident Physician' || formRole === 'Anesthesiologist' || formName.toUpperCase().startsWith('DR.');
     const isAdmin = formRole === 'Hospital Administrator';
 
     const initials = formName
+      .replace(/Dr\.|MD|RN|Nurse|,/gi, '')
+      .trim()
       .split(' ')
-      .filter(w => !w.includes('Dr.') && !w.includes('Nurse') && !w.includes('MD') && !w.includes('RN'))
+      .filter(Boolean)
       .slice(0, 2)
       .map(w => w[0])
       .join('')
@@ -256,7 +301,8 @@ export default function AdminUsersPage() {
       role: formRole,
       department: formDept,
       employee_id: formEmpId,
-      prc_license_no: formPrcLic,
+      prc_license_no: formAccredNo || 'N/A',
+      accreditation_no: formAccredNo || 'N/A',
       specialization: formSpecialization,
       contact_no: formContact,
       avatar_initials: initials,
@@ -274,9 +320,10 @@ export default function AdminUsersPage() {
 
   const filteredStaff = staffList.filter(s => {
     const q = searchQuery.toLowerCase();
+    const accred = (s.accreditation_no || s.prc_license_no || '').toLowerCase();
     const matchesQuery = 
       s.name.toLowerCase().includes(q) ||
-      s.prc_license_no.toLowerCase().includes(q) ||
+      accred.includes(q) ||
       s.employee_id.toLowerCase().includes(q) ||
       s.department.toLowerCase().includes(q) ||
       s.role.toLowerCase().includes(q);
@@ -359,12 +406,12 @@ export default function AdminUsersPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Upload Excel Employee Files • Synced with iHOMIS+ Ref_Personnel & PRC Licenses
+              Upload Excel Employee Files • Synced with iHOMIS+ Ref_Personnel & Accreditation Numbers
             </p>
           </div>
         </div>
 
-        {/* Action Buttons: Upload Excel, Add Employee, Lock Admin */}
+        {/* Action Buttons: Upload Excel, Add Employee, Change PIN, Lock Admin */}
         <div className="flex flex-wrap items-center gap-2">
           
           {/* Hidden File Input for Excel */}
@@ -419,7 +466,7 @@ export default function AdminUsersPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search name, PRC License, or Ward..."
+            placeholder="Search name, Accreditation No, or Ward..."
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
           />
         </div>
@@ -462,7 +509,7 @@ export default function AdminUsersPage() {
                 <th className="py-3 px-3">Name & Title</th>
                 <th className="py-3 px-3">Role</th>
                 <th className="py-3 px-3">Department / Ward</th>
-                <th className="py-3 px-3">PRC License No</th>
+                <th className="py-3 px-3">Accreditation No</th>
                 <th className="py-3 px-3">Employee ID</th>
                 <th className="py-3 px-3 text-center">Action</th>
               </tr>
@@ -506,10 +553,10 @@ export default function AdminUsersPage() {
                       {staff.department}
                     </td>
 
-                    {/* PRC License */}
+                    {/* Accreditation No */}
                     <td className="py-3 px-3 whitespace-nowrap">
                       <span className="font-mono text-xs font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                        {staff.prc_license_no}
+                        {staff.accreditation_no || staff.prc_license_no || 'N/A'}
                       </span>
                     </td>
 
@@ -573,17 +620,24 @@ export default function AdminUsersPage() {
 
             <div className="p-4 overflow-y-auto flex-1 space-y-2 text-xs">
               <p className="text-slate-500 font-semibold mb-2">
-                Palihug i-review ang mga na-extract nga data gikan sa imong Excel file sa dili pa i-save:
+                Palihug i-review ang mga na-extract nga Doctor/Nurse data ug Accreditation No. gikan sa imong Excel file:
               </p>
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                 {parsedRows.slice(0, 15).map((row, i) => (
                   <div key={i} className="p-3 bg-white flex items-center justify-between">
                     <div>
-                      <span className="font-extrabold text-slate-900 block">{row.name} ({row.role})</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-slate-900 text-xs">{row.name}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
+                          row.is_doctor ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {row.role}
+                        </span>
+                      </div>
                       <span className="text-[11px] text-slate-500">{row.department} • ID: {row.employee_id}</span>
                     </div>
                     <span className="font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      PRC: {row.prc_license_no}
+                      ACCRED: {row.accreditation_no || row.prc_license_no}
                     </span>
                   </div>
                 ))}
@@ -616,133 +670,6 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ADD / EDIT EMPLOYEE MODAL */}
-      {isFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
-            
-            <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-base font-black text-slate-900">
-                {editingId ? 'Edit Hospital Personnel' : 'Add New Hospital Personnel'}
-              </h3>
-              <button
-                onClick={() => setIsFormOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveForm} className="p-5 space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Full Name & Title (e.g. Dr. Juan Dela Cruz, MD o Nurse Maria, RN):</label>
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  required
-                  placeholder="e.g. Dr. Juan Dela Cruz, MD"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Medical Role:</label>
-                  <select
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as any)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Physician">Physician / Attending (MD)</option>
-                    <option value="Resident Physician">Resident Physician</option>
-                    <option value="Staff Nurse">Staff Nurse (RN)</option>
-                    <option value="Head Nurse">Head Nurse</option>
-                    <option value="Charge Nurse">Charge Nurse</option>
-                    <option value="Anesthesiologist">Anesthesiologist</option>
-                    <option value="Respiratory Therapist">Respiratory Therapist</option>
-                    <option value="Security Officer">Security Officer</option>
-                    <option value="Hospital Administrator">Hospital Administrator</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">PRC License No:</label>
-                  <input
-                    type="text"
-                    value={formPrcLic}
-                    onChange={(e) => setFormPrcLic(e.target.value)}
-                    required
-                    placeholder="e.g. 0129845"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Ward / Station:</label>
-                  <select
-                    value={formDept}
-                    onChange={(e) => setFormDept(e.target.value as any)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Emergency Department (ER)">Emergency Department (ER)</option>
-                    <option value="ICU NEW ROOM">ICU NEW ROOM</option>
-                    <option value="MEDICAL WARD (WARD 4)">MEDICAL WARD (WARD 4)</option>
-                    <option value="WARD 5 (OB-GYN)">WARD 5 (OB-GYN)</option>
-                    <option value="WARD 6 (Nursery / Pedia)">WARD 6 (Nursery / Pedia)</option>
-                    <option value="WARD 7 (Surgical)">WARD 7 (Surgical)</option>
-                    <option value="WARD 10 (Isolation)">WARD 10 (Isolation)</option>
-                    <option value="Outpatient Clinic (OPD)">Outpatient Clinic (OPD)</option>
-                    <option value="Hospital Administration / IT">Hospital Administration / IT</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Employee ID:</label>
-                  <input
-                    type="text"
-                    value={formEmpId}
-                    onChange={(e) => setFormEmpId(e.target.value)}
-                    placeholder="e.g. CPHB-MD-0129"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Specialization / Scope:</label>
-                <input
-                  type="text"
-                  value={formSpecialization}
-                  onChange={(e) => setFormSpecialization(e.target.value)}
-                  placeholder="e.g. Adult Cardiology / Emergency Resuscitation"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsFormOpen(false)}
-                  className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-md transition"
-                >
-                  Save Personnel
-                </button>
-              </div>
-            </form>
-
           </div>
         </div>
       )}
@@ -827,6 +754,133 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD / EDIT EMPLOYEE MODAL */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+            
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-base font-black text-slate-900">
+                {editingId ? 'Edit Hospital Personnel' : 'Add New Hospital Personnel'}
+              </h3>
+              <button
+                onClick={() => setIsFormOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveForm} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Full Name & Title (e.g. DR. ALEXANDER S HO. JR o Nurse Maria, RN):</label>
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  required
+                  placeholder="e.g. DR. ALEXANDER S HO. JR"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Medical Role:</label>
+                  <select
+                    value={formRole}
+                    onChange={(e) => setFormRole(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Physician">Physician / Doctor (MD)</option>
+                    <option value="Resident Physician">Resident Physician</option>
+                    <option value="Staff Nurse">Staff Nurse (RN)</option>
+                    <option value="Head Nurse">Head Nurse</option>
+                    <option value="Charge Nurse">Charge Nurse</option>
+                    <option value="Anesthesiologist">Anesthesiologist</option>
+                    <option value="Respiratory Therapist">Respiratory Therapist</option>
+                    <option value="Security Officer">Security Officer</option>
+                    <option value="Hospital Administrator">Hospital Administrator</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Accreditation No.:</label>
+                  <input
+                    type="text"
+                    value={formAccredNo}
+                    onChange={(e) => setFormAccredNo(e.target.value)}
+                    placeholder="e.g. 0129845 / PHIC ACC"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Ward / Section:</label>
+                  <select
+                    value={formDept}
+                    onChange={(e) => setFormDept(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Medical Section">Medical Section</option>
+                    <option value="Emergency Department (ER)">Emergency Department (ER)</option>
+                    <option value="ICU NEW ROOM">ICU NEW ROOM</option>
+                    <option value="MEDICAL WARD (WARD 4)">MEDICAL WARD (WARD 4)</option>
+                    <option value="WARD 5 (OB-GYN)">WARD 5 (OB-GYN)</option>
+                    <option value="WARD 6 (Nursery / Pedia)">WARD 6 (Nursery / Pedia)</option>
+                    <option value="WARD 7 (Surgical)">WARD 7 (Surgical)</option>
+                    <option value="WARD 10 (Isolation)">WARD 10 (Isolation)</option>
+                    <option value="Outpatient Clinic (OPD)">Outpatient Clinic (OPD)</option>
+                    <option value="Hospital Administration / IT">Hospital Administration / IT</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Employee ID:</label>
+                  <input
+                    type="text"
+                    value={formEmpId}
+                    onChange={(e) => setFormEmpId(e.target.value)}
+                    placeholder="e.g. CPHB-MD-1001"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Specialization / Scope:</label>
+                <input
+                  type="text"
+                  value={formSpecialization}
+                  onChange={(e) => setFormSpecialization(e.target.value)}
+                  placeholder="e.g. Attending Physician / Emergency Resuscitation"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(false)}
+                  className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-md transition"
+                >
+                  Save Personnel
+                </button>
+              </div>
+            </form>
+
           </div>
         </div>
       )}

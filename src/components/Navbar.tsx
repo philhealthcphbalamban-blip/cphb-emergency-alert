@@ -177,10 +177,10 @@ export const Navbar: React.FC = () => {
                   sessionStorage.removeItem('cphb_admin_unlocked');
                   const otherStaff = StaffService.getAllStaff().find(s => !s.is_admin) || StaffService.getAllStaff()[0];
                   StaffService.setCurrentStaff(otherStaff);
-                  setModalOpen(true);
+                  setModalOpen(false);
                 }}
                 className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-xs font-black text-red-700 transition shadow-sm"
-                title="Log Out Admin and switch to Ward / Doctor duty"
+                title="Log Out Admin"
               >
                 <span>Log Out Admin 🚪</span>
               </button>

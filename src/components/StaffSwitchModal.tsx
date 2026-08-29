@@ -130,7 +130,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
                 Active Duty Session (Permanent Standby):
               </span>
               <span className="text-xs font-black text-slate-900">
-                {currentStaff.name} ({currentStaff.role}) • {currentStaff.department} • <span className="font-mono text-emerald-800 font-bold">PRC: {currentStaff.prc_license_no}</span>
+                {currentStaff.name} ({currentStaff.role}) • {currentStaff.department} • <span className="font-mono text-emerald-800 font-bold">Accred No: {currentStaff.accreditation_no || currentStaff.prc_license_no || 'N/A'}</span>
               </span>
             </div>
           </div>
@@ -222,7 +222,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 font-semibold mt-0.5">
-                      {staff.department} • <strong className="text-blue-900 font-mono">PRC: {staff.prc_license_no}</strong> • ID: <span className="font-mono text-slate-500">{staff.employee_id}</span>
+                      {staff.department} • <strong className="text-blue-900 font-mono">Accred No: {staff.accreditation_no || staff.prc_license_no || 'N/A'}</strong> • ID: <span className="font-mono text-slate-500">{staff.employee_id}</span>
                     </p>
                   </div>
                 </div>
