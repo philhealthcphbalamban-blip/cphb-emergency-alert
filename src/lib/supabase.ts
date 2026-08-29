@@ -69,7 +69,7 @@ export class EmergencyService {
     if (supabase) {
       try {
         supabase
-          .channel('public:emergency_alerts')
+          .channel('public:emergency_alerts_realtime_broadcast')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'emergency_alerts' },
@@ -83,6 +83,18 @@ export class EmergencyService {
         console.warn('Supabase realtime subscription error:', e);
       }
     }
+
+    // ⚡ Cross-Device Realtime Poller (Checks every 2.5s to ensure alerts pop up everywhere)
+    setInterval(async () => {
+      try {
+        const activeAlert = await this.getActiveAlert();
+        if (activeAlert) {
+          this.notifyListeners(activeAlert, 'POLL_SYNC');
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 2500);
   }
 
   public static subscribe(callback: (alert: EmergencyAlert | null, event: string) => void) {
