@@ -6,9 +6,10 @@ class AudioEngine {
   private gainNode: GainNode | null = null;
   private isPlaying = false;
   private sirenInterval: any = null;
+  private vibrationInterval: any = null;
 
   private initContext() {
-    if (!this.audioCtx) {
+    if (!this.audioCtx && typeof window !== 'undefined') {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtxClass) {
         this.audioCtx = new AudioCtxClass();
@@ -16,6 +17,59 @@ class AudioEngine {
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
+    }
+  }
+
+  // Mobile Device Haptic Vibration (repeats until alert is acknowledged/stopped)
+  public startMobileVibration() {
+    if (typeof window === 'undefined' || !navigator.vibrate) return;
+    try {
+      this.stopMobileVibration();
+      // Vibrate pattern: Vibrate 600ms, Pause 200ms, Vibrate 600ms, Pause 200ms, Vibrate 1000ms
+      navigator.vibrate([600, 200, 600, 200, 1000]);
+      this.vibrationInterval = setInterval(() => {
+        if (navigator.vibrate) {
+          navigator.vibrate([600, 200, 600, 200, 1000]);
+        }
+      }, 3000);
+    } catch (e) {
+      console.warn('Vibration API error:', e);
+    }
+  }
+
+  public stopMobileVibration() {
+    if (this.vibrationInterval) {
+      clearInterval(this.vibrationInterval);
+      this.vibrationInterval = null;
+    }
+    if (typeof window !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(0);
+    }
+  }
+
+  // Browser Web Notification (Displays banner on desktop/mobile lockscreen)
+  public requestNotificationPermission() {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+    }
+  }
+
+  public triggerPushNotification(title: string, body: string) {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try {
+          new Notification(title, {
+            body,
+            icon: '/favicon.ico',
+            tag: 'cphb-emergency-alert',
+            requireInteraction: true,
+          });
+        } catch (e) {
+          console.warn('Web Notification error:', e);
+        }
+      }
     }
   }
 
@@ -50,67 +104,78 @@ class AudioEngine {
     try {
       this.stopSiren();
       this.initContext();
+      this.startMobileVibration();
       if (!this.audioCtx) return;
 
       this.isPlaying = true;
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.setValueAtTime(0.15, this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(0.18, this.audioCtx.currentTime);
       this.gainNode.connect(this.audioCtx.destination);
 
       this.osc = this.audioCtx.createOscillator();
       this.osc.type = 'sawtooth';
 
+      const now = this.audioCtx.currentTime;
+
       if (pattern === 'hi_lo') {
+        // High-Low British Ambulance / Resuscitation Chime (780Hz <-> 960Hz)
         let isHigh = true;
-        this.osc.frequency.setValueAtTime(880, this.audioCtx.currentTime);
+        this.osc.frequency.setValueAtTime(960, now);
         this.sirenInterval = setInterval(() => {
-          if (!this.audioCtx || !this.osc) return;
+          if (!this.osc || !this.audioCtx) return;
+          const currTime = this.audioCtx.currentTime;
+          if (isHigh) {
+            this.osc.frequency.setValueAtTime(780, currTime);
+          } else {
+            this.osc.frequency.setValueAtTime(960, currTime);
+          }
           isHigh = !isHigh;
-          this.osc.frequency.setValueAtTime(
-            isHigh ? 960 : 720,
-            this.audioCtx.currentTime
-          );
         }, 450);
       } else if (pattern === 'wail') {
-        this.osc.type = 'triangle';
-        let freq = 600;
-        let direction = 1;
+        // Continuous Fire / Code Red Wail (500Hz to 1200Hz)
+        this.osc.frequency.setValueAtTime(500, now);
+        let goingUp = true;
         this.sirenInterval = setInterval(() => {
-          if (!this.audioCtx || !this.osc) return;
-          freq += direction * 35;
-          if (freq >= 1250) direction = -1;
-          if (freq <= 550) direction = 1;
-          this.osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
-        }, 50);
+          if (!this.osc || !this.audioCtx) return;
+          const currTime = this.audioCtx.currentTime;
+          if (goingUp) {
+            this.osc.frequency.linearRampToValueAtTime(1200, currTime + 1.2);
+          } else {
+            this.osc.frequency.linearRampToValueAtTime(500, currTime + 1.2);
+          }
+          goingUp = !goingUp;
+        }, 1250);
       } else if (pattern === 'strobe_beep') {
-        this.osc.type = 'square';
-        this.osc.frequency.setValueAtTime(1050, this.audioCtx.currentTime);
-        let on = true;
+        // Rapid Security Beep (Code Pink / Infant Alert)
+        let beeping = true;
+        this.osc.frequency.setValueAtTime(1400, now);
         this.sirenInterval = setInterval(() => {
-          if (!this.audioCtx || !this.gainNode) return;
-          on = !on;
-          this.gainNode.gain.setValueAtTime(on ? 0.2 : 0.0, this.audioCtx.currentTime);
+          if (!this.gainNode || !this.audioCtx) return;
+          const currTime = this.audioCtx.currentTime;
+          this.gainNode.gain.setValueAtTime(beeping ? 0.25 : 0, currTime);
+          beeping = !beeping;
         }, 180);
       } else {
-        // pulse
-        this.osc.type = 'sine';
-        this.osc.frequency.setValueAtTime(520, this.audioCtx.currentTime);
+        // Pulse / Code White / Code Black
+        this.osc.frequency.setValueAtTime(600, now);
         let on = true;
         this.sirenInterval = setInterval(() => {
-          if (!this.audioCtx || !this.gainNode) return;
+          if (!this.gainNode || !this.audioCtx) return;
+          const currTime = this.audioCtx.currentTime;
+          this.gainNode.gain.setValueAtTime(on ? 0.2 : 0, currTime);
           on = !on;
-          this.gainNode.gain.setValueAtTime(on ? 0.25 : 0.02, this.audioCtx.currentTime);
-        }, 350);
+        }, 500);
       }
 
       this.osc.connect(this.gainNode);
-      this.osc.start();
+      this.osc.start(now);
     } catch (e) {
-      console.warn('Siren audio error:', e);
+      console.warn('Start siren error:', e);
     }
   }
 
   public stopSiren() {
+    this.stopMobileVibration();
     if (this.sirenInterval) {
       clearInterval(this.sirenInterval);
       this.sirenInterval = null;
@@ -131,49 +196,48 @@ class AudioEngine {
     this.isPlaying = false;
   }
 
-  public speak(text: string, onEnd?: () => void) {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      if (onEnd) onEnd();
-      return;
+  public stopSpeech() {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
     }
+  }
+
+  public speak(text: string, repeats: number = 2) {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     try {
-      window.speechSynthesis.cancel(); // clear previous
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.92; // Clear and deliberate
-      utterance.pitch = 1.05;
-      utterance.volume = 1.0;
-
-      // Select high quality English voice if available
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => 
-        (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('David')) && v.lang.startsWith('en')
-      ) || voices.find(v => v.lang.startsWith('en'));
-
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-      }
-
-      if (onEnd) {
-        utterance.onend = () => onEnd();
-        utterance.onerror = () => onEnd();
-      }
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('Speech synthesis error:', e);
-      if (onEnd) onEnd();
-    }
-  }
-
-  public stopSpeech() {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-    }
-  }
+      let count = 0;
 
-  public isSirenActive() {
-    return this.isPlaying;
+      const speakOnce = () => {
+        if (count >= repeats) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        utterance.pitch = 1.05;
+        utterance.volume = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Natural')));
+        if (englishVoice) {
+          utterance.voice = englishVoice;
+        }
+
+        utterance.onend = () => {
+          count++;
+          if (count < repeats) {
+            setTimeout(speakOnce, 800);
+          }
+        };
+
+        window.speechSynthesis.speak(utterance);
+      };
+
+      setTimeout(speakOnce, 250);
+    } catch (e) {
+      console.warn('TTS Speech error:', e);
+    }
   }
 }
 

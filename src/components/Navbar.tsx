@@ -75,6 +75,7 @@ export const Navbar: React.FC = () => {
     { name: 'Responder', href: '/responder', icon: Smartphone },
     { name: 'iHOMIS Census', href: '/ihomis', icon: Building },
     { name: 'History', href: '/history', icon: History },
+    { name: 'Admin Staff', href: '/admin/users', icon: Users },
   ];
 
   return (

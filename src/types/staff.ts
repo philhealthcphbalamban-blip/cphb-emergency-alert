@@ -1,6 +1,7 @@
 export type StaffRole = 
   | 'Staff Nurse'
   | 'Head Nurse'
+  | 'Charge Nurse'
   | 'Physician'
   | 'Resident Physician'
   | 'Anesthesiologist'
@@ -18,7 +19,8 @@ export type HospitalDepartment =
   | 'WARD 10 (Isolation)'
   | 'Outpatient Clinic (OPD)'
   | 'Resuscitation Code Team'
-  | 'Hospital Security & Command';
+  | 'Hospital Security & Command'
+  | 'Hospital Administration / IT';
 
 export interface HospitalStaff {
   id: string;
@@ -28,10 +30,11 @@ export interface HospitalStaff {
   employee_id: string;
   prc_license_no: string;           // DOH / PRC License Number e.g. '0129845'
   specialization?: string;          // e.g. 'Emergency Medicine / Trauma'
-  contact_no?: string;              // Local / Mobile e.g. 'Loc 102 / +63 917 123 4567'
+  contact_no?: string;              // Local / Mobile e.g. 'Loc 102 / 0917-123-4567'
   avatar_initials: string;
   color_hex: string;
   is_doctor: boolean;
+  is_admin?: boolean;
   can_trigger_code: boolean;
   can_respond_code: boolean;
   can_resolve_code: boolean;

@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { EmergencyAlert } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
-import { Siren, X, ShieldAlert, Users, Volume2 } from 'lucide-react';
+import { audioEngine } from '@/lib/audioEngine';
+import { Siren, X, ShieldAlert, Users, Volume2, Smartphone } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -13,26 +14,55 @@ export const GlobalAlertModal: React.FC = () => {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Request notification permission for phone alerts
+    audioEngine.requestNotificationPermission();
+
     EmergencyService.init();
 
     EmergencyService.getActiveAlert().then((alert) => {
       setActiveAlert(alert);
-      if (alert) setDismissed(false);
+      if (alert) {
+        setDismissed(false);
+        triggerAlarmEffects(alert);
+      }
     });
 
     const unsubscribe = EmergencyService.subscribe((alert, eventType) => {
       if (eventType === 'RESOLVED') {
         setActiveAlert(null);
+        audioEngine.stopSiren();
+        audioEngine.stopMobileVibration();
       } else if (alert && (alert.status === 'ACTIVE' || alert.status === 'RESPONDING')) {
         setActiveAlert(alert);
         setDismissed(false);
+        if (eventType === 'TRIGGERED') {
+          triggerAlarmEffects(alert);
+        }
       }
     });
 
     return () => {
       unsubscribe();
+      audioEngine.stopSiren();
     };
   }, []);
+
+  const triggerAlarmEffects = (alert: EmergencyAlert) => {
+    // 1. Mobile Haptic Vibration
+    audioEngine.startMobileVibration();
+
+    // 2. Audible Sirens (if not on monitor page)
+    if (pathname !== '/monitor') {
+      audioEngine.playChime();
+    }
+
+    // 3. Web Push Notification banner
+    const codeName = alert.code_details?.code_name || 'EMERGENCY CODE';
+    audioEngine.triggerPushNotification(
+      `🚨 ${codeName} - ${alert.location_text}`,
+      `Triggered by ${alert.triggered_by_name}. Respond immediately!`
+    );
+  };
 
   if (pathname === '/monitor' || !activeAlert || dismissed) {
     return null;
@@ -52,69 +82,64 @@ export const GlobalAlertModal: React.FC = () => {
           
           <div className="flex items-center space-x-3">
             <div className={`p-2.5 rounded-xl animate-pulse ${isCodeBlue ? 'bg-blue-600' : 'bg-red-600'}`}>
-              <Siren className="h-6 w-6 text-white" />
+              <Siren className="h-6 w-6 text-white animate-spin" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-white/20 text-white">
                   {code?.code_name || 'EMERGENCY CODE'}
                 </span>
-                <span className="text-xs text-amber-300 font-bold flex items-center">
-                  <span className="h-2 w-2 rounded-full bg-amber-400 mr-1 animate-ping" />
-                  {activeAlert.status}
+                <span className="text-xs text-amber-300 font-mono font-bold animate-pulse">
+                  ● ACTIVE ALERT
                 </span>
               </div>
-              <h4 className="text-sm font-black text-white mt-1 leading-tight">
+              <h4 className="text-base font-black tracking-tight text-white mt-1">
                 {code?.title}
               </h4>
             </div>
           </div>
 
-          <button
-            onClick={() => setDismissed(true)}
-            className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
-            title="Dismiss mini banner"
+          <button 
+            onClick={() => {
+              setDismissed(true);
+              audioEngine.stopMobileVibration();
+            }}
+            className="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10"
+            title="Dismiss popup"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="mt-3 p-3 rounded-xl bg-black/30 border border-white/15 flex items-center justify-between text-xs">
-          <div>
-            <span className="text-slate-300 block text-[10px] uppercase font-black tracking-wider">Location</span>
-            <span className="font-extrabold text-white">{activeAlert.location_text}</span>
+        <div className="mt-3 p-3 rounded-xl bg-black/30 border border-white/10 space-y-1">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-white/70">Location:</span>
+            <span className="font-extrabold text-amber-300 font-mono text-sm">{activeAlert.location_text}</span>
           </div>
-          <div className="text-right">
-            <span className="text-slate-300 block text-[10px] uppercase font-black tracking-wider">Responders</span>
-            <span className="font-bold text-emerald-300 flex items-center justify-end">
-              <Users className="h-3 w-3 mr-1" />
-              {activeAlert.responders?.length || 0} Team Members
-            </span>
-          </div>
+          {activeAlert.patient_details && (
+            <div className="flex justify-between items-center text-xs pt-1 border-t border-white/10">
+              <span className="text-white/70">Patient:</span>
+              <span className="font-bold text-white truncate max-w-[200px]">{activeAlert.patient_details.patient_name}</span>
+            </div>
+          )}
         </div>
 
-        {activeAlert.patient_details && (
-          <div className="mt-2 text-[11px] text-amber-200 font-semibold truncate">
-            👤 Patient: <strong>{activeAlert.patient_details.patient_name}</strong>
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center space-x-2">
-          <Link
+        <div className="mt-4 flex items-center space-x-2">
+          <Link 
             href="/responder"
-            className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-md transition"
+            className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase tracking-wider text-center transition flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-500/20"
           >
-            <ShieldAlert className="h-3.5 w-3.5" />
-            <span>Respond Now</span>
+            <Smartphone className="h-3.5 w-3.5" />
+            <span>I Am Responding</span>
           </Link>
-          <Link
+          <Link 
             href="/monitor"
-            className="flex-1 py-2.5 px-3 rounded-xl bg-white text-slate-900 font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-md hover:bg-slate-100 transition"
+            className="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs text-center transition border border-white/20"
           >
-            <Volume2 className="h-3.5 w-3.5 text-blue-600" />
-            <span>Open Monitor</span>
+            Open Kiosk
           </Link>
         </div>
+
       </div>
     </div>
   );

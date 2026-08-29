@@ -34,7 +34,8 @@ export const StaffSwitchModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  let filtered = CPHB_STAFF_MEMBERS;
+  const allStaff = StaffService.getAllStaff();
+  let filtered = allStaff;
 
   if (roleCategory === 'DOCTORS') {
     filtered = filtered.filter(s => s.is_doctor);
