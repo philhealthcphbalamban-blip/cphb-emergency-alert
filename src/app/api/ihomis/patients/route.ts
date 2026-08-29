@@ -5,6 +5,20 @@ import { MOCK_IHOMIS_PATIENTS } from '@/lib/ihomisService';
 
 export const dynamic = 'force-dynamic';
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ihomis-sync-key',
+};
+
+// Handle Preflight OPTIONS request from Chrome
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
+
 function getSupabase() {
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vptgxwbsyccgamcuunya.supabase.co';
   const supabaseUrl = rawUrl.includes('vptgxwbysyccgamcuunya')
@@ -21,40 +35,9 @@ function getSupabase() {
 // In-memory fallback
 let inMemoryPatientsCache: IHOMISPatient[] = [...MOCK_IHOMIS_PATIENTS];
 
-// Direct gateway polling helper (attempts to connect to https://ihomis-plus.cphb.local/)
-async function tryDirectIHOMISGatewaySync() {
-  const targetUrl = process.env.IHOMIS_GATEWAY_URL || 'https://ihomis-plus.cphb.local';
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-    const res = await fetch(`${targetUrl}/Emergency/getLive`, {
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
-      }
-    }
-  } catch (e) {
-    // Gateway is internal/firewalled, use cloud database
-  }
-  return null;
-}
-
 // GET /api/ihomis/patients -> Fetches cloud synced patient census & live metrics
 export async function GET() {
   try {
-    // 1. Try Direct Hospital Gateway if reachable
-    const directLive = await tryDirectIHOMISGatewaySync();
-    if (directLive && directLive.length > 0) {
-      inMemoryPatientsCache = directLive;
-    }
-
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('emergency_audit_logs')
@@ -73,7 +56,7 @@ export async function GET() {
         metrics: data.details.metrics || null,
         last_synced_at: data.details.updated_at || data.created_at,
         source: 'cloud',
-      });
+      }, { headers: CORS_HEADERS });
     }
 
     return NextResponse.json({
@@ -82,7 +65,7 @@ export async function GET() {
       patients: inMemoryPatientsCache,
       last_synced_at: new Date().toISOString(),
       source: 'fallback',
-    });
+    }, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error('Error fetching iHOMIS patients from cloud:', err);
     return NextResponse.json({
@@ -90,23 +73,23 @@ export async function GET() {
       count: inMemoryPatientsCache.length,
       patients: inMemoryPatientsCache,
       source: 'fallback_error',
-    });
+    }, { headers: CORS_HEADERS });
   }
 }
 
-// POST /api/ihomis/patients -> Saves updated patient census to Supabase cloud (Supports Automated LAN Bridge & Manual Webhook)
+// POST /api/ihomis/patients -> Saves updated patient census to Supabase cloud (Supports In-Browser & LAN Bridge Sync)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const incomingPatients: IHOMISPatient[] = body.patients;
 
     if (!Array.isArray(incomingPatients)) {
-      return NextResponse.json({ success: false, error: 'Patients array required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Patients array required' }, { status: 400, headers: CORS_HEADERS });
     }
 
     let finalPatients: IHOMISPatient[];
 
-    // If partial sync (e.g. only syncing EMERGENCY module from LAN bridge)
+    // If partial sync (e.g. only syncing EMERGENCY module from browser)
     if (body.module && typeof body.module === 'string') {
       const otherModulePatients = inMemoryPatientsCache.filter(p => p.source_module !== body.module);
       finalPatients = [...incomingPatients, ...otherModulePatients];
@@ -137,12 +120,12 @@ export async function POST(req: NextRequest) {
     try {
       await supabase.from('emergency_audit_logs').insert({
         event_type: 'IHOMIS_PATIENTS_SYNC',
-        actor_name: body.synced_by || 'iHOMIS Plus LAN Auto-Bridge Daemon',
+        actor_name: body.synced_by || 'iHOMIS Plus In-Browser Auto-Bridge',
         details: {
           patients: finalPatients,
           total_count: finalPatients.length,
           metrics,
-          sync_source: body.sync_source || 'LAN_AUTO_BRIDGE',
+          sync_source: body.sync_source || 'BROWSER_LIVE_SYNC',
           updated_at: new Date().toISOString(),
         },
       });
@@ -156,9 +139,9 @@ export async function POST(req: NextRequest) {
       count: finalPatients.length,
       metrics,
       synced_at: new Date().toISOString(),
-    });
+    }, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error('Error in POST /api/ihomis/patients:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message }, { status: 500, headers: CORS_HEADERS });
   }
 }
