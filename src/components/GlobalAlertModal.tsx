@@ -3,18 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { EmergencyAlert } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
-import { StaffService } from '@/lib/staffService';
 import { audioEngine } from '@/lib/audioEngine';
-import { Siren, X, Smartphone, Monitor } from 'lucide-react';
+import { Siren, X, Monitor, CheckCircle, Smartphone } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
 export const GlobalAlertModal: React.FC = () => {
   const [activeAlert, setActiveAlert] = useState<EmergencyAlert | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [isResponding, setIsResponding] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
 
   useEffect(() => {
     // Request notification permission for desktop & mobile alerts
@@ -65,31 +62,14 @@ export const GlobalAlertModal: React.FC = () => {
     const codeName = alert.code_details?.code_name || 'EMERGENCY CODE';
     audioEngine.triggerPushNotification(
       `🚨 ${codeName} - ${alert.location_text}`,
-      `Patient: ${alert.patient_details?.patient_name || 'Emergency Patient'}. Respond immediately!`
+      `Patient: ${alert.patient_details?.patient_name || 'Emergency Patient'}. Immediate attention required!`
     );
   };
 
-  const handleQuickRespond = async () => {
-    if (!activeAlert) return;
-    setIsResponding(true);
-
-    const currentStaff = StaffService.getCurrentStaff();
-    try {
-      await EmergencyService.addResponder({
-        alert_id: activeAlert.id,
-        responder_name: currentStaff.name,
-        role: currentStaff.is_doctor ? 'Physician' : 'Nurse',
-        eta_minutes: 2,
-      });
-      audioEngine.stopMobileVibration();
-      audioEngine.stopSiren();
-      setDismissed(true);
-      router.push('/responder');
-    } catch (e) {
-      router.push('/responder');
-    } finally {
-      setIsResponding(false);
-    }
+  const handleAcknowledge = () => {
+    setDismissed(true);
+    audioEngine.stopMobileVibration();
+    audioEngine.stopSiren();
   };
 
   // Don't show modal if on /monitor page (which already has full TV UI), or if dismissed, or if no active alert
@@ -136,10 +116,7 @@ export const GlobalAlertModal: React.FC = () => {
           </div>
 
           <button 
-            onClick={() => {
-              setDismissed(true);
-              audioEngine.stopMobileVibration();
-            }}
+            onClick={handleAcknowledge}
             className="text-white/60 hover:text-white p-1 rounded-xl hover:bg-white/10 transition"
             title="Dismiss alert popup"
           >
@@ -165,24 +142,23 @@ export const GlobalAlertModal: React.FC = () => {
           )}
         </div>
 
-        {/* Quick Action Buttons */}
+        {/* Clean Functional Action Buttons */}
         <div className="mt-4 flex items-center space-x-2">
-          <button
-            onClick={handleQuickRespond}
-            disabled={isResponding}
-            className="flex-1 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-slate-950 font-black text-xs uppercase tracking-wider text-center transition flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/25 cursor-pointer"
-          >
-            <Smartphone className="h-4 w-4 shrink-0" />
-            <span>{isResponding ? 'Connecting...' : 'I Am Responding'}</span>
-          </button>
-
           <Link 
             href="/monitor"
-            className="py-3 px-4 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-white/30 text-white font-bold text-xs text-center transition border border-white/20 whitespace-nowrap flex items-center space-x-1.5"
+            className="flex-1 py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-xs uppercase tracking-wider text-center transition flex items-center justify-center space-x-2 shadow-lg shadow-blue-600/30"
           >
-            <Monitor className="h-3.5 w-3.5" />
-            <span>Open Kiosk</span>
+            <Monitor className="h-4 w-4 shrink-0" />
+            <span>Open Emergency Kiosk</span>
           </Link>
+
+          <button
+            onClick={handleAcknowledge}
+            className="py-3 px-4 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-white/30 text-white font-bold text-xs text-center transition border border-white/20 whitespace-nowrap flex items-center space-x-1.5 cursor-pointer"
+          >
+            <CheckCircle className="h-4 w-4 text-emerald-400" />
+            <span>Acknowledge</span>
+          </button>
         </div>
 
       </div>

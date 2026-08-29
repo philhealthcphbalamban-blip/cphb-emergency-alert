@@ -18,7 +18,8 @@ import {
   Zap, 
   Building, 
   MapPin, 
-  Bed
+  Bed,
+  Monitor
 } from 'lucide-react';
 import { EmergencyAlert } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
@@ -200,22 +201,17 @@ export default function CommandHubPage() {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    href="/responder"
-                    className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider shadow-sm transition"
-                  >
-                    Respond as Doctor/Nurse
-                  </Link>
-                  <Link
                     href="/monitor"
-                    className="px-4 py-2.5 rounded-xl bg-white text-slate-900 font-black text-xs uppercase tracking-wider shadow-sm hover:bg-slate-100 transition"
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider shadow-sm transition flex items-center space-x-1.5"
                   >
-                    Open TV Monitor
+                    <Monitor className="h-4 w-4" />
+                    <span>Open Emergency Kiosk</span>
                   </Link>
                   <button
                     onClick={handleResolveActive}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition"
                   >
-                    Clear Code
+                    Clear Emergency
                   </button>
                 </div>
               </div>
