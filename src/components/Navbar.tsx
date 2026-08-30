@@ -16,7 +16,9 @@ import {
   Wifi,
   ChevronDown,
   UserCheck,
-  Lock
+  Lock,
+  Ambulance,
+  MapPin
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { HospitalStaff } from '@/types/staff';
@@ -89,8 +91,9 @@ export const Navbar: React.FC = () => {
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Trigger Code', href: '/trigger', icon: ShieldAlert, highlight: true },
     { name: 'TV Monitor', href: '/monitor', icon: Tv },
+    { name: 'Balamban Rescue', href: '/rescue', icon: Ambulance, badge: '911' },
     { name: 'Responder', href: '/responder', icon: Smartphone },
-    { name: 'History', href: '/history', icon: History },
+    { name: 'Locations', href: '/admin/locations', icon: MapPin },
     { name: 'Admin Staff', href: '/admin/users', icon: Users },
   ];
 

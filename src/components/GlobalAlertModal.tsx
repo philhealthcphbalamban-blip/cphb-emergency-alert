@@ -32,12 +32,10 @@ export const GlobalAlertModal: React.FC = () => {
     const unsubscribe = EmergencyService.subscribe((alert, eventType) => {
       if (eventType === 'RESOLVED') {
         setActiveAlert(null);
-        audioEngine.stopSiren();
-        audioEngine.stopMobileVibration();
       } else if (alert && (alert.status === 'ACTIVE' || alert.status === 'RESPONDING')) {
         setActiveAlert(alert);
         setDismissed(false);
-        if (eventType === 'TRIGGERED' || eventType === 'POLL_SYNC') {
+        if (eventType === 'TRIGGERED') {
           triggerAlarmEffects(alert);
         }
       }
@@ -45,7 +43,6 @@ export const GlobalAlertModal: React.FC = () => {
 
     return () => {
       unsubscribe();
-      audioEngine.stopSiren();
     };
   }, []);
 
@@ -53,12 +50,7 @@ export const GlobalAlertModal: React.FC = () => {
     // 1. Mobile Haptic Vibration
     audioEngine.startMobileVibration();
 
-    // 2. Audible Sound on Desktop & Mobile (if not on monitor page)
-    if (pathname !== '/monitor') {
-      audioEngine.playChime();
-    }
-
-    // 3. Web Push Notification banner for desktop lockscreens
+    // 2. Web Push Notification banner for desktop lockscreens
     const codeName = alert.code_details?.code_name || 'EMERGENCY CODE';
     audioEngine.triggerPushNotification(
       `🚨 ${codeName} - ${alert.location_text}`,
@@ -69,7 +61,6 @@ export const GlobalAlertModal: React.FC = () => {
   const handleAcknowledge = () => {
     setDismissed(true);
     audioEngine.stopMobileVibration();
-    audioEngine.stopSiren();
   };
 
   // Don't show modal if on /monitor, /responder, or /trigger page (which already have full UI), or if dismissed, or if no active alert

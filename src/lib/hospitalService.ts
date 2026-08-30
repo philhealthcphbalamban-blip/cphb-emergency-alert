@@ -37,28 +37,13 @@ export class HospitalService {
     this.setActiveHospital(hosp);
   }
 
-  public static getLocationsForHospital(hospitalId?: string): HospitalLocation[] {
+  public static getDefaultLocationsForHospital(hospitalId?: string): HospitalLocation[] {
     const currentId = hospitalId || this.getActiveHospital().id;
 
-    // Check if custom imported locations exist for this hospital
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(`${STORAGE_KEY_CUSTOM_LOCATIONS}_${currentId}`);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
-      } catch (e) {}
-    }
-
-    // Default Balamban official locations
     if (currentId === 'cphb') {
       return INITIAL_LOCATIONS;
     }
 
-    // Default templates for other Cebu Provincial Hospitals
     if (currentId === 'cphd') {
       return [
         { id: 'cphd-er-1', hospital_id: 'cphd', building: 'Main Complex', floor: 'Ground Floor', unit_ward: 'Emergency Department (ER)', room_bed: 'ER Trauma Bay 1' },
@@ -82,14 +67,80 @@ export class HospitalService {
       ];
     }
 
-    // Default fallback
     return INITIAL_LOCATIONS;
   }
 
-  public static saveCustomLocations(hospitalId: string, locations: HospitalLocation[]): void {
+  public static getLocationsForHospital(hospitalId?: string): HospitalLocation[] {
+    const currentId = hospitalId || this.getActiveHospital().id;
+
+    // Check if custom imported locations exist for this hospital
     if (typeof window !== 'undefined') {
-      localStorage.setItem(`${STORAGE_KEY_CUSTOM_LOCATIONS}_${hospitalId}`, JSON.stringify(locations));
-      window.dispatchEvent(new CustomEvent('cph_locations_updated', { detail: { hospitalId, locations } }));
+      try {
+        const stored = localStorage.getItem(`${STORAGE_KEY_CUSTOM_LOCATIONS}_${currentId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {}
     }
+
+    return this.getDefaultLocationsForHospital(currentId);
+  }
+
+  public static async saveCustomLocations(hospitalId: string, locations: HospitalLocation[]): Promise<void> {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`${STORAGE_KEY_CUSTOM_LOCATIONS}_${hospitalId}`, JSON.stringify(locations));
+        window.dispatchEvent(new CustomEvent('cph_locations_updated', { detail: { hospitalId, locations } }));
+      } catch (e) {}
+    }
+
+    // Broadcast sync to Cloud audit log & server
+    try {
+      fetch('/api/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          custom_locations: {
+            hospital_id: hospitalId,
+            locations,
+            updated_at: new Date().toISOString(),
+          },
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  public static async addLocation(hospitalId: string, loc: Omit<HospitalLocation, 'id'>): Promise<HospitalLocation> {
+    const list = this.getLocationsForHospital(hospitalId);
+    const newLoc: HospitalLocation = {
+      ...loc,
+      id: `${hospitalId}-loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      hospital_id: hospitalId,
+    };
+
+    const updated = [newLoc, ...list];
+    await this.saveCustomLocations(hospitalId, updated);
+    return newLoc;
+  }
+
+  public static async updateLocation(hospitalId: string, loc: HospitalLocation): Promise<void> {
+    const list = this.getLocationsForHospital(hospitalId);
+    const updated = list.map(l => (l.id === loc.id ? loc : l));
+    await this.saveCustomLocations(hospitalId, updated);
+  }
+
+  public static async deleteLocation(hospitalId: string, locationId: string): Promise<void> {
+    const list = this.getLocationsForHospital(hospitalId);
+    const updated = list.filter(l => l.id !== locationId);
+    await this.saveCustomLocations(hospitalId, updated);
+  }
+
+  public static async resetToDefaultLocations(hospitalId: string): Promise<HospitalLocation[]> {
+    const defaults = this.getDefaultLocationsForHospital(hospitalId);
+    await this.saveCustomLocations(hospitalId, defaults);
+    return defaults;
   }
 }

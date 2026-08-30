@@ -25,6 +25,8 @@ import { audioEngine } from '@/lib/audioEngine';
 import { HospitalService } from '@/lib/hospitalService';
 import { StaffService } from '@/lib/staffService';
 
+import { audioController } from '@/lib/audioController';
+
 export default function MonitorPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
   const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
@@ -39,53 +41,6 @@ export default function MonitorPage() {
   const [resolverName, setResolverName] = useState<string>('Dr. Santos, MD (Team Lead)');
 
   const lastAlertsHashRef = useRef<string>('');
-  const soundEnabledRef = useRef<boolean>(true);
-  const ttsEnabledRef = useRef<boolean>(true);
-  const ttsIntervalRef = useRef<any>(null);
-
-  soundEnabledRef.current = soundEnabled;
-  ttsEnabledRef.current = ttsEnabled;
-
-  const triggerEmergencyAudio = (alerts: EmergencyAlert[]) => {
-    if (alerts.length === 0) {
-      stopAllAudio();
-      return;
-    }
-
-    const priorityAlert = alerts[0];
-    let announcementText = '';
-
-    if (alerts.length === 1) {
-      const a = alerts[0];
-      const template = a.code_details?.tts_template || 'Attention all personnel: Emergency code at {location}.';
-      announcementText = template.replace('{location}', a.location_text);
-    } else {
-      const parts = alerts.map((a) => `${a.code_details?.code_name} at ${a.location_text}`);
-      announcementText = `Attention all medical personnel: Multiple concurrent codes active. ${parts.join('. Also active, ')}.`;
-    }
-
-    if (ttsEnabledRef.current) {
-      audioEngine.playHospitalAlertSequence(
-        announcementText,
-        priorityAlert.code_details?.siren_pattern || 'hi_lo',
-        soundEnabledRef.current
-      );
-    } else if (soundEnabledRef.current) {
-      audioEngine.startSiren(priorityAlert.code_details?.siren_pattern || 'hi_lo');
-    }
-
-    // Gentle repeat every 30 seconds
-    if (ttsIntervalRef.current) clearInterval(ttsIntervalRef.current);
-    ttsIntervalRef.current = setInterval(() => {
-      if (ttsEnabledRef.current && alerts.length > 0) {
-        audioEngine.playHospitalAlertSequence(
-          announcementText,
-          priorityAlert.code_details?.siren_pattern || 'hi_lo',
-          soundEnabledRef.current
-        );
-      }
-    }, 30000);
-  };
 
   const fetchActiveAlerts = async () => {
     const list = await EmergencyService.getActiveAlerts(activeHospital.id);
@@ -95,12 +50,7 @@ export default function MonitorPage() {
 
     if (newHash !== lastAlertsHashRef.current) {
       lastAlertsHashRef.current = newHash;
-
-      if (list.length > 0) {
-        triggerEmergencyAudio(list);
-      } else {
-        stopAllAudio();
-      }
+      audioController.syncAlerts(list);
     }
   };
 
@@ -133,13 +83,13 @@ export default function MonitorPage() {
 
     const pollInterval = setInterval(() => {
       fetchActiveAlerts();
-    }, 2500);
+    }, 2000);
 
     return () => {
       unsubscribe();
       clearInterval(pollInterval);
       window.removeEventListener('cph_hospital_changed', handleHospChange);
-      stopAllAudio();
+      audioController.stopAllImmediate();
     };
   }, [activeHospital.id]);
 
@@ -165,37 +115,19 @@ export default function MonitorPage() {
     return () => clearInterval(timer);
   }, [activeAlerts]);
 
-  const stopAllAudio = () => {
-    audioEngine.stopSiren();
-    audioEngine.stopSpeech();
-    if (ttsIntervalRef.current) {
-      clearInterval(ttsIntervalRef.current);
-      ttsIntervalRef.current = null;
-    }
-  };
-
   const toggleSound = () => {
-    if (soundEnabled) {
-      audioEngine.stopSiren();
-      setSoundEnabled(false);
-    } else {
-      setSoundEnabled(true);
-      if (activeAlerts.length > 0) {
-        audioEngine.startSiren(activeAlerts[0].code_details?.siren_pattern || 'hi_lo');
-      }
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    audioController.setMuted(!next);
+    if (next && activeAlerts.length > 0) {
+      audioController.syncAlerts(activeAlerts);
     }
   };
 
   const toggleTTS = () => {
-    if (ttsEnabled) {
-      audioEngine.stopSpeech();
-      setTtsEnabled(false);
-    } else {
-      setTtsEnabled(true);
-      if (activeAlerts.length > 0) {
-        triggerEmergencyAudio(activeAlerts);
-      }
-    }
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    audioController.setVoiceDisabled(!next);
   };
 
   const toggleFullscreen = () => {
@@ -209,6 +141,9 @@ export default function MonitorPage() {
   const handleConfirmResolve = async () => {
     if (!resolvingAlert) return;
     
+    // Instant 0ms audio termination
+    audioController.stopAllImmediate();
+
     await EmergencyService.resolveAlert({
       alert_id: resolvingAlert.id,
       resolved_by_name: resolverName,
@@ -440,7 +375,7 @@ export default function MonitorPage() {
                         </button>
 
                         <button
-                          onClick={stopAllAudio}
+                          onClick={() => audioController.stopAllImmediate()}
                           className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition"
                         >
                           Mute Alarm Sirens Temporarily
