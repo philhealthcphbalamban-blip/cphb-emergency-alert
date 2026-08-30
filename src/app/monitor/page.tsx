@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { 
   Tv, 
   Volume2, 
@@ -22,14 +23,18 @@ import {
 import { EmergencyAlert, AlertResponder } from '@/types/emergency';
 import { EmergencyService } from '@/lib/supabase';
 import { audioEngine } from '@/lib/audioEngine';
+import { RescueService } from '@/lib/rescueService';
+import { CommunityEmergencyAlert, COMMUNITY_EMERGENCY_DEFS } from '@/types/rescue';
+import { Ambulance, Radio, PhoneCall } from 'lucide-react';
 import { HospitalService } from '@/lib/hospitalService';
 import { StaffService } from '@/lib/staffService';
-
 import { audioController } from '@/lib/audioController';
 
 export default function MonitorPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
   const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
+  const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>([]);
+  const [monitorMode, setMonitorMode] = useState<'HOSPITAL' | 'RESCUE' | 'UNIFIED'>('HOSPITAL');
   const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
@@ -54,8 +59,13 @@ export default function MonitorPage() {
     }
   };
 
+  const loadCommunityAlerts = () => {
+    setCommunityAlerts(RescueService.getCommunityAlerts());
+  };
+
   useEffect(() => {
     EmergencyService.init();
+    RescueService.init();
 
     // Request Screen Wake Lock for continuous Kiosk display
     if ('wakeLock' in navigator) {
@@ -68,6 +78,7 @@ export default function MonitorPage() {
     }
 
     fetchActiveAlerts();
+    loadCommunityAlerts();
 
     const handleHospChange = (e: any) => {
       if (e.detail) {
@@ -77,16 +88,22 @@ export default function MonitorPage() {
     };
     window.addEventListener('cph_hospital_changed', handleHospChange);
 
-    const unsubscribe = EmergencyService.subscribe(() => {
+    const unsubscribeEmergency = EmergencyService.subscribe(() => {
       fetchActiveAlerts();
+    });
+
+    const unsubscribeRescue = RescueService.subscribe((updated) => {
+      setCommunityAlerts(updated);
     });
 
     const pollInterval = setInterval(() => {
       fetchActiveAlerts();
+      loadCommunityAlerts();
     }, 2000);
 
     return () => {
-      unsubscribe();
+      unsubscribeEmergency();
+      unsubscribeRescue();
       clearInterval(pollInterval);
       window.removeEventListener('cph_hospital_changed', handleHospChange);
       audioController.stopAllImmediate();
@@ -179,14 +196,53 @@ export default function MonitorPage() {
               {activeAlerts.length > 1 && (
                 <span className="bg-red-600 text-white px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center space-x-1">
                   <Layers className="h-3 w-3 inline mr-1" />
-                  {activeAlerts.length} Active Codes (Split View)
+                  {activeAlerts.length} Active Codes
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500">
-              High-Visibility Screen • Multi-Code Concurrent Broadcast Engine • 24/7 LAN Sync
+              High-Visibility Smart TV Screen • Hospital & Balamban Rescue Network
             </p>
           </div>
+        </div>
+
+        {/* TV Mode Switcher Tabs */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+          <button
+            onClick={() => setMonitorMode('HOSPITAL')}
+            className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+              monitorMode === 'HOSPITAL'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShieldAlert className="h-3.5 w-3.5" />
+            <span>Hospital Wards ({activeAlerts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setMonitorMode('RESCUE')}
+            className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+              monitorMode === 'RESCUE'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Ambulance className="h-3.5 w-3.5" />
+            <span>Balamban Rescue 911 ({communityAlerts.filter(c => c.status !== 'RESOLVED').length})</span>
+          </button>
+
+          <button
+            onClick={() => setMonitorMode('UNIFIED')}
+            className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+              monitorMode === 'UNIFIED'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span>Unified Dual View</span>
+          </button>
         </div>
 
         {/* Display Controls */}
@@ -229,8 +285,175 @@ export default function MonitorPage() {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      {activeAlerts.length > 0 ? (
+      {/* Main Content Area based on monitorMode */}
+      {monitorMode === 'RESCUE' ? (
+        /* DEDICATED BALAMBAN RESCUE 911 VIEW */
+        communityAlerts.filter(c => c.status !== 'RESOLVED').length > 0 ? (
+          <div className="space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between bg-red-950/80 border border-red-500/40 p-4 rounded-2xl text-white">
+              <div className="flex items-center space-x-2.5">
+                <Ambulance className="h-6 w-6 text-red-400 animate-pulse" />
+                <span className="text-sm font-black uppercase tracking-wider text-red-200">
+                  MDRRMO Balamban Rescue & 28 Barangays Active Incidents ({communityAlerts.filter(c => c.status !== 'RESOLVED').length})
+                </span>
+              </div>
+              <Link
+                href="/rescue/monitor"
+                className="text-xs font-bold text-amber-300 hover:underline bg-black/40 px-3 py-1.5 rounded-xl border border-white/20"
+              >
+                Open Fullscreen Rescue Kiosk ↗
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {communityAlerts.filter(c => c.status !== 'RESOLVED').map((alert) => {
+                const def = COMMUNITY_EMERGENCY_DEFS[alert.emergency_type] || COMMUNITY_EMERGENCY_DEFS.CODE_TRAUMA;
+                return (
+                  <div key={alert.id} className="bg-slate-900 text-white rounded-3xl border-2 border-red-500 p-5 shadow-xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-red-600 text-white">
+                          {def.badge}
+                        </span>
+                        <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950">
+                          {alert.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <span className="text-xs text-white/70 font-mono">
+                        {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xl font-black text-white">Brgy. {alert.barangay_name}</h3>
+                      <p className="text-xs text-amber-300 font-bold flex items-center mt-0.5">
+                        <MapPin className="h-3.5 w-3.5 mr-1 text-red-400 shrink-0" />
+                        {alert.sitio_or_landmark}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs">
+                      <span className="text-white/60 block text-[10px] uppercase font-bold">Patient Condition:</span>
+                      <p className="text-white mt-0.5">{alert.patient_condition}</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-blue-950/80 border border-blue-500/30 text-xs text-blue-200 flex items-center justify-between">
+                      <span>Destination: <strong>{alert.destination_facility}</strong></span>
+                      <span className="text-[10px] text-amber-300 font-bold">ER PREPPED</span>
+                    </div>
+
+                    <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-xs text-white/60">Contact: {alert.caller_phone}</span>
+                      <button
+                        onClick={async () => {
+                          const statusProgression: Record<string, any> = {
+                            DISPATCHED: 'EN_ROUTE',
+                            EN_ROUTE: 'ON_SCENE',
+                            ON_SCENE: 'TRANSPORTING_TO_CPHB',
+                            TRANSPORTING_TO_CPHB: 'ARRIVED_AT_CPHB',
+                            ARRIVED_AT_CPHB: 'RESOLVED',
+                          };
+                          const next = statusProgression[alert.status] || 'RESOLVED';
+                          await RescueService.updateAlertStatus(alert.id, next);
+                          audioEngine.playChime();
+                          loadCommunityAlerts();
+                        }}
+                        className="py-1.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider"
+                      >
+                        Advance / Clear Incident
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-20 px-6 rounded-3xl bg-white border border-slate-200 shadow-sm my-6">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-red-50 text-red-600 mb-6 shadow-inner">
+              <Ambulance className="h-12 w-12 animate-pulse" />
+            </div>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+              MDRRMO BALAMBAN RESCUE STANDBY
+            </h2>
+            <p className="text-base text-red-700 font-bold mt-1.5">
+              All 28 Barangays & Highway Rescue Patrols Clear
+            </p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-2">
+              No active community rescue or PTV transport requests. System is actively listening 24/7.
+            </p>
+          </div>
+        )
+      ) : monitorMode === 'UNIFIED' ? (
+        /* UNIFIED DUAL SCREEN: LEFT = HOSPITAL CODES, RIGHT = BALAMBAN RESCUE */
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+          
+          {/* LEFT: Hospital Active Wards */}
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 bg-blue-50 border border-blue-200 p-3 rounded-2xl">
+              <ShieldAlert className="h-5 w-5 text-blue-700" />
+              <h2 className="text-sm font-black uppercase tracking-wider text-blue-900">
+                Hospital Codes — {activeHospital.shortName} ({activeAlerts.length})
+              </h2>
+            </div>
+
+            {activeAlerts.length > 0 ? (
+              activeAlerts.map((alert) => {
+                const code = alert.code_details;
+                return (
+                  <div key={alert.id} className="p-6 rounded-3xl border-4 border-blue-500 bg-slate-900 text-white shadow-xl space-y-3">
+                    <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded bg-blue-600 text-white">
+                      {code?.code_name}
+                    </span>
+                    <h3 className="text-2xl font-black text-white">{alert.location_text}</h3>
+                    <p className="text-xs text-slate-300">{code?.title}</p>
+                    <button
+                      onClick={() => setResolvingAlert(alert)}
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider"
+                    >
+                      Clear / Resolve {code?.code_name}
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs font-bold">Hospital Wards Standby & Normal</p>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: Balamban Rescue */}
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 bg-red-50 border border-red-200 p-3 rounded-2xl">
+              <Ambulance className="h-5 w-5 text-red-700" />
+              <h2 className="text-sm font-black uppercase tracking-wider text-red-900">
+                Balamban Rescue 911 Incidents ({communityAlerts.filter(c => c.status !== 'RESOLVED').length})
+              </h2>
+            </div>
+
+            {communityAlerts.filter(c => c.status !== 'RESOLVED').length > 0 ? (
+              communityAlerts.filter(c => c.status !== 'RESOLVED').map((alert) => (
+                <div key={alert.id} className="p-6 rounded-3xl border-4 border-red-500 bg-slate-900 text-white shadow-xl space-y-3">
+                  <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded bg-red-600 text-white">
+                    {alert.emergency_type}
+                  </span>
+                  <h3 className="text-2xl font-black text-white">Brgy. {alert.barangay_name}</h3>
+                  <p className="text-xs text-amber-300 font-bold">{alert.sitio_or_landmark}</p>
+                  <p className="text-xs text-slate-300">{alert.patient_condition}</p>
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs font-bold">Balamban Barangays Standby & Clear</p>
+              </div>
+            )}
+          </div>
+
+        </div>
+      ) : activeAlerts.length > 0 ? (
         activeAlerts.length === 1 ? (
           /* SINGLE HIGH VISIBILITY CODE BANNER */
           (() => {
