@@ -69,20 +69,31 @@ export class RescueService {
           const cloudAlerts: CommunityEmergencyAlert[] = json.alerts;
           const currentLocal = this.getCommunityAlerts();
 
-          // Merge cloud alerts with local alerts (Strict resolution precedence)
+          // Master Cloud Authority Merge
           const mergedMap = new Map<string, CommunityEmergencyAlert>();
-          currentLocal.forEach(a => mergedMap.set(a.id, a));
-          cloudAlerts.forEach(a => {
-            const existing = mergedMap.get(a.id);
-            if (existing && (existing.status === 'RESOLVED' || a.status === 'RESOLVED')) {
-              mergedMap.set(a.id, {
-                ...existing,
-                ...a,
-                status: 'RESOLVED',
-                resolved_at: a.resolved_at || existing.resolved_at || new Date().toISOString(),
-              });
+
+          // 1. Populate from Cloud Master
+          cloudAlerts.forEach(a => mergedMap.set(a.id, a));
+
+          // 2. Cross-reference with Local Storage
+          currentLocal.forEach(local => {
+            const cloud = mergedMap.get(local.id);
+            if (cloud) {
+              // If either cloud OR local marked it resolved, STRICTLY enforce RESOLVED
+              if (local.status === 'RESOLVED' || cloud.status === 'RESOLVED') {
+                mergedMap.set(local.id, {
+                  ...cloud,
+                  ...local,
+                  status: 'RESOLVED',
+                  resolved_at: local.resolved_at || cloud.resolved_at || new Date().toISOString(),
+                });
+              }
             } else {
-              mergedMap.set(a.id, a);
+              // If only in local, keep only if freshly created in the last 60 seconds (in transit)
+              const age = Date.now() - new Date(local.dispatched_at).getTime();
+              if (age < 60000 && local.status !== 'RESOLVED') {
+                mergedMap.set(local.id, local);
+              }
             }
           });
 
@@ -90,12 +101,13 @@ export class RescueService {
             (a, b) => new Date(b.dispatched_at).getTime() - new Date(a.dispatched_at).getTime()
           );
 
+          try {
+            localStorage.setItem(STORAGE_KEY_COMMUNITY_ALERTS, JSON.stringify(merged));
+          } catch (e) {}
+
           const newHash = merged.map(a => `${a.id}_${a.status}`).join('|');
           if (newHash !== this.lastHash) {
             this.lastHash = newHash;
-            try {
-              localStorage.setItem(STORAGE_KEY_COMMUNITY_ALERTS, JSON.stringify(merged));
-            } catch (e) {}
             this.notifyListeners();
           }
 
@@ -214,7 +226,22 @@ export class RescueService {
       triage_notes: `Emergency code broadcast to Balamban Rescue MDRRMO and Barangay ${params.barangay_name}.`,
     };
 
-    const updated = [newAlert, ...list];
+    // 1. Send to Cloud API first
+    try {
+      await fetch('/api/rescue/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'DISPATCH',
+          alert: newAlert,
+        }),
+      });
+    } catch (e) {
+      console.warn('Cloud dispatch error:', e);
+    }
+
+    // 2. Save to local storage & broadcast
+    const updated = [newAlert, ...list.filter(a => a.id !== newAlert.id)];
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(STORAGE_KEY_COMMUNITY_ALERTS, JSON.stringify(updated));
@@ -223,18 +250,6 @@ export class RescueService {
         }
       } catch (e) {}
     }
-
-    // ⚡ Sync to Cloud API (broadcasts to all mobile phones and TV monitors)
-    try {
-      fetch('/api/rescue/alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'DISPATCH',
-          alert: newAlert,
-        }),
-      }).catch(() => {});
-    } catch (e) {}
 
     this.notifyListeners();
     return newAlert;
@@ -246,13 +261,16 @@ export class RescueService {
     notes?: string
   ): Promise<void> {
     const list = this.getCommunityAlerts();
+    const resolvedAt = status === 'RESOLVED' ? new Date().toISOString() : undefined;
+
+    // 1. Immediately update local storage
     const updated = list.map((a) => {
-      if (a.id === alertId) {
+      if (!alertId || alertId === 'any' || a.id === alertId) {
         return {
           ...a,
           status,
           triage_notes: notes || a.triage_notes,
-          resolved_at: status === 'RESOLVED' ? new Date().toISOString() : a.resolved_at,
+          resolved_at: status === 'RESOLVED' ? resolvedAt : a.resolved_at,
         };
       }
       return a;
@@ -262,14 +280,16 @@ export class RescueService {
       try {
         localStorage.setItem(STORAGE_KEY_COMMUNITY_ALERTS, JSON.stringify(updated));
         if (this.channel) {
-          this.channel.postMessage({ type: 'RESCUE_ALERTS_SYNC' });
+          this.channel.postMessage({ type: 'RESCUE_ALERTS_SYNC', alertId, status });
         }
       } catch (e) {}
     }
 
-    // ⚡ Sync Status to Cloud API
+    this.notifyListeners();
+
+    // 2. Send to Cloud API
     try {
-      fetch('/api/rescue/alerts', {
+      await fetch('/api/rescue/alerts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -278,9 +298,12 @@ export class RescueService {
           status,
           notes,
         }),
-      }).catch(() => {});
-    } catch (e) {}
+      });
+    } catch (e) {
+      console.warn('Cloud update status error:', e);
+    }
 
-    this.notifyListeners();
+    // 3. Immediately re-fetch from cloud
+    await this.fetchFromCloud();
   }
 }
