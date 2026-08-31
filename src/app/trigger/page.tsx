@@ -25,6 +25,7 @@ import { HospitalService } from '@/lib/hospitalService';
 import { audioEngine } from '@/lib/audioEngine';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import BalambanRescuePage from '@/app/rescue/page';
 
 function TriggerPadContent() {
   const router = useRouter();
@@ -37,6 +38,11 @@ function TriggerPadContent() {
   // Active Hospital
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
   const [hospitalLocations, setHospitalLocations] = useState<HospitalLocation[]>(HospitalService.getLocationsForHospital());
+
+  // If facility is Balamban Rescue, automatically render the Balamban Community Rescue Dispatch Pad
+  if (activeHospital.isRescue || activeHospital.id === 'balamban_rescue') {
+    return <BalambanRescuePage />;
+  }
 
   // Active Staff Member
   const currentStaff = StaffService.getCurrentStaff();

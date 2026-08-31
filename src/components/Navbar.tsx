@@ -88,11 +88,18 @@ export const Navbar: React.FC = () => {
     setTimeout(() => setLanCopied(false), 2000);
   };
 
-  const navItems = [
+  const isRescue = currentHospital.isRescue || currentHospital.id === 'balamban_rescue';
+
+  const navItems = isRescue ? [
+    { name: 'EOC Dashboard', href: '/', icon: Home },
+    { name: 'Dispatch 911', href: '/trigger', icon: Ambulance, highlight: true },
+    { name: 'Rescue TV Screen', href: '/rescue/monitor', icon: Tv },
+    { name: 'PTV Responders', href: '/responder', icon: Smartphone },
+    { name: '28 Barangays Directory', href: '/rescue', icon: MapPin },
+  ] : [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Trigger Code', href: '/trigger', icon: ShieldAlert, highlight: true },
     { name: 'TV Monitor', href: '/monitor', icon: Tv },
-    { name: 'Balamban Rescue', href: '/rescue', icon: Ambulance, badge: '911' },
     { name: 'Responder', href: '/responder', icon: Smartphone },
     { name: 'Locations', href: '/admin/locations', icon: MapPin },
     { name: 'Admin Staff', href: '/admin/users', icon: Users },
@@ -109,18 +116,20 @@ export const Navbar: React.FC = () => {
               className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm text-white transition shrink-0"
               style={{ backgroundColor: currentHospital.colorHex }}
             >
-              <Activity className="h-5 w-5" />
+              {isRescue ? <Ambulance className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
             </div>
             <div className="shrink-0">
               <div className="flex items-center space-x-1.5 whitespace-nowrap">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900">
-                  {currentHospital.code} CODE ALERT
+                  {isRescue ? 'BALAMBAN RESCUE 911' : `${currentHospital.code} CODE ALERT`}
                 </span>
-                <span className="rounded bg-red-100 px-1.5 py-0.2 text-[9px] font-black uppercase text-red-700 border border-red-200">
-                  RAPID
+                <span className={`rounded px-1.5 py-0.2 text-[9px] font-black uppercase border ${
+                  isRescue ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-red-100 text-red-700 border-red-200'
+                }`}>
+                  {isRescue ? 'MDRRMO' : 'RAPID'}
                 </span>
                 <span className="hidden xl:inline-block rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800 border border-blue-200">
-                  iHOMIS+
+                  {isRescue ? '28 BRGYS' : 'iHOMIS+'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium hidden sm:block whitespace-nowrap">
@@ -142,7 +151,7 @@ export const Navbar: React.FC = () => {
                     isActive
                       ? item.highlight 
                         ? 'bg-red-600 text-white shadow-sm'
-                        : 'bg-blue-600 text-white shadow-sm'
+                        : isRescue ? 'bg-red-700 text-white shadow-sm' : 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
                   }`}
                 >
