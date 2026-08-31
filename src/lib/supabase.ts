@@ -155,28 +155,43 @@ export class EmergencyService {
   public static async getActiveAlerts(hospitalId?: string): Promise<EmergencyAlert[]> {
     const hid = hospitalId || HospitalService.getActiveHospital().id;
 
-    // 1. Fetch from REST API
+    // 1. Fetch from Cloud REST API (Master Authority)
     try {
       const res = await fetch(`/api/emergency/alerts?hospital_id=${hid}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.success && Array.isArray(json.activeAlerts) && json.activeAlerts.length > 0) {
-          // Update local storage cache
+        if (json.success && Array.isArray(json.activeAlerts)) {
+          const serverActive: EmergencyAlert[] = json.activeAlerts;
+
+          // Master synchronize with local storage
           if (typeof window !== 'undefined') {
             try {
               const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
-              const merged = [...json.activeAlerts, ...stored.filter((s: any) => !json.activeAlerts.some((a: any) => a.id === s.id))];
-              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(merged));
+              const updatedHistory = stored.map((s: any) => {
+                const isStillActive = serverActive.some(a => a.id === s.id);
+                if (!isStillActive && (s.status === 'ACTIVE' || s.status === 'RESPONDING')) {
+                  return { ...s, status: 'RESOLVED', resolved_at: new Date().toISOString() };
+                }
+                return s;
+              });
+              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(updatedHistory));
             } catch (e) {}
           }
-          return json.activeAlerts;
+
+          if (serverActive.length === 0) {
+            this.lastAlertId = null;
+            return [];
+          }
+
+          this.lastAlertId = serverActive[0].id;
+          return serverActive;
         }
       }
     } catch (e) {
-      // Network blip, proceed to local/direct fallback
+      // Network offline fallback
     }
 
-    // 2. Direct Supabase Query
+    // 2. Direct Supabase Query fallback
     if (supabase) {
       try {
         let query = supabase
@@ -185,16 +200,17 @@ export class EmergencyService {
           .in('status', ['ACTIVE', 'RESPONDING'])
           .order('triggered_at', { ascending: false });
 
+        if (hid === 'cphb') {
+          query = query.or(`hospital_id.eq.${hid},hospital_id.is.null`);
+        } else {
+          query = query.eq('hospital_id', hid);
+        }
+
         const { data, error } = await query;
 
-        if (data && !error && data.length > 0) {
-          const filtered = data.filter(d => {
-            const h = d.hospital_id || 'cphb';
-            return hid === 'cphb' ? (h === 'cphb' || !d.hospital_id) : h === hid;
-          });
-
-          if (filtered.length > 0) {
-            const list = filtered.map(d => ({
+        if (!error) {
+          if (data && data.length > 0) {
+            const list = data.map(d => ({
               ...d,
               code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
               patient_details: d.patient_details || null,
@@ -205,6 +221,9 @@ export class EmergencyService {
               } catch (e) {}
             }
             return list;
+          } else {
+            // Supabase confirmed 0 active alerts
+            return [];
           }
         }
       } catch (e) {
@@ -212,16 +231,14 @@ export class EmergencyService {
       }
     }
 
-    // 3. Resilient LocalStorage Cache
+    // 3. Offline LocalStorage Cache
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem(`cph_emergency_history_${hid}`);
         if (stored) {
           const parsed: EmergencyAlert[] = JSON.parse(stored);
           const activeLocal = parsed.filter(a => (a.status === 'ACTIVE' || a.status === 'RESPONDING') && (!a.hospital_id || a.hospital_id === hid));
-          if (activeLocal.length > 0) {
-            return activeLocal;
-          }
+          return activeLocal;
         }
       } catch (e) {}
     }
