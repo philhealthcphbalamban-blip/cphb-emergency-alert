@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, AdminAuthService, DEFAULT_CPHB_STAFF } from '@/lib/staffService';
+import { HospitalService } from '@/lib/hospitalService';
 import { BALAMBAN_BARANGAYS } from '@/types/rescue';
 import * as XLSX from 'xlsx';
 
@@ -196,19 +197,41 @@ export default function AdminUsersPage() {
     }
   };
 
+  const generateAutoEmpId = (facilityId: string) => {
+    if (facilityId === 'balamban_rescue') {
+      const allStaff = StaffService.getAllStaff();
+      const rescueCount = allStaff.filter(s => s.is_rescue || s.hospital_id === 'balamban_rescue').length + 1;
+      return `MDRRMO-BAL-${String(rescueCount).padStart(2, '0')}`;
+    }
+    if (facilityId === 'cphd') return `CPHD-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (facilityId === 'cphc') return `CPHC-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (facilityId === 'cphbogo') return `CPHBOGO-${Math.floor(1000 + Math.random() * 9000)}`;
+    return `CPHB-${Math.floor(1000 + Math.random() * 9000)}`;
+  };
+
   const handleOpenAdd = () => {
     if (!isAuthenticated) return;
     setEditingId(null);
     setFormName('');
-    setFormRole('MEDICAL SPECIALIST');
-    setFormDept('Medical Section');
-    setFormEmpId(`DOC${Math.floor(10000 + Math.random() * 90000)}`);
+
+    const initialFacility = selectedFacility !== 'ALL' ? selectedFacility : (HospitalService.getActiveHospital().isRescue ? 'balamban_rescue' : 'cphb');
+    setFormHospitalId(initialFacility);
+
+    if (initialFacility === 'balamban_rescue') {
+      setFormRole('MDRRMO 911 Dispatcher');
+      setFormDept('MDRRMO Balamban Command Center');
+      setFormColor('#dc2626');
+    } else {
+      setFormRole('MEDICAL SPECIALIST');
+      setFormDept('Medical Section');
+      setFormColor('#2563eb');
+    }
+
+    setFormEmpId(generateAutoEmpId(initialFacility));
     setFormAccredNo('');
     setFormPrcNo('');
     setFormSpecialization('');
     setFormContact('Loc 101');
-    setFormColor('#2563eb');
-    setFormHospitalId('cphb');
     setFormPinCode('');
     setFormAssignedBarangay('');
     setIsFormOpen(true);
@@ -1198,14 +1221,17 @@ export default function AdminUsersPage() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setFormHospitalId(val);
-                    if (val === 'balamban_rescue') {
-                      setFormDept('MDRRMO Balamban Command Center');
-                      setFormRole('MDRRMO 911 Dispatcher');
-                      setFormColor('#dc2626');
-                    } else if (val === 'cphb') {
-                      setFormDept('Medical Section');
-                      setFormRole('MEDICAL SPECIALIST');
-                      setFormColor('#2563eb');
+                    if (!editingId) {
+                      setFormEmpId(generateAutoEmpId(val));
+                      if (val === 'balamban_rescue') {
+                        setFormDept('MDRRMO Balamban Command Center');
+                        setFormRole('MDRRMO 911 Dispatcher');
+                        setFormColor('#dc2626');
+                      } else {
+                        setFormDept('Medical Section');
+                        setFormRole('MEDICAL SPECIALIST');
+                        setFormColor('#2563eb');
+                      }
                     }
                   }}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
@@ -1248,73 +1274,92 @@ export default function AdminUsersPage() {
                   />
                 </div>
 
-                {/* Position / Role input with datalist */}
+                {/* Position / Designation: Clean Select Dropdown */}
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Position / Designation:</label>
-                  <input
-                    type="text"
-                    list="role-suggestions"
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value)}
-                    required
-                    placeholder="e.g. MDRRMO 911 Dispatcher / Staff Nurse"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  />
-                  <datalist id="role-suggestions">
-                    <option value="MDRRMO 911 Dispatcher" />
-                    <option value="Rescue Team Lead" />
-                    <option value="Ambulance EMT / Driver" />
-                    <option value="Barangay PTV Driver" />
-                    <option value="Barangay Health Worker (BHW)" />
-                    <option value="MEDICAL SPECIALIST" />
-                    <option value="MEDICAL OFFICER III" />
-                    <option value="MEDICAL OFFICER IV" />
-                    <option value="Physician / Doctor (MD)" />
-                    <option value="Resident Physician" />
-                    <option value="NURSE I" />
-                    <option value="NURSE II" />
-                    <option value="Staff Nurse (RN)" />
-                    <option value="Head Nurse" />
-                    <option value="MIDWIFE I" />
-                    <option value="MIDWIFE II" />
-                    <option value="MEDICAL TECHNOLOGIST I" />
-                    <option value="PHARMACIST I" />
-                    <option value="SOCIAL WELFARE OFFICER I" />
-                    <option value="ADMINISTRATIVE OFFICER" />
-                    <option value="Hospital Administrator" />
-                  </datalist>
+                  {formHospitalId === 'balamban_rescue' ? (
+                    <select
+                      value={formRole}
+                      onChange={(e) => setFormRole(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="MDRRMO 911 Dispatcher">MDRRMO 911 Dispatcher</option>
+                      <option value="Rescue Team Lead">Rescue Team Lead</option>
+                      <option value="Ambulance EMT / Driver">Ambulance EMT / Driver</option>
+                      <option value="Barangay PTV Driver">Barangay PTV Driver</option>
+                      <option value="Barangay Health Worker (BHW)">Barangay Health Worker (BHW)</option>
+                      <option value="BERT Emergency Responder">BERT Emergency Responder</option>
+                      <option value="Incident Commander (EOC Lead)">Incident Commander (EOC Lead)</option>
+                      <option value="Paramedic / First Aider">Paramedic / First Aider</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={formRole}
+                      onChange={(e) => setFormRole(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="MEDICAL SPECIALIST">MEDICAL SPECIALIST</option>
+                      <option value="MEDICAL OFFICER III">MEDICAL OFFICER III</option>
+                      <option value="MEDICAL OFFICER IV">MEDICAL OFFICER IV</option>
+                      <option value="Physician / Doctor (MD)">Physician / Doctor (MD)</option>
+                      <option value="Resident Physician">Resident Physician</option>
+                      <option value="Staff Nurse (RN)">Staff Nurse (RN)</option>
+                      <option value="Head Nurse">Head Nurse</option>
+                      <option value="NURSE I">NURSE I</option>
+                      <option value="NURSE II">NURSE II</option>
+                      <option value="MIDWIFE I">MIDWIFE I</option>
+                      <option value="MIDWIFE II">MIDWIFE II</option>
+                      <option value="MEDICAL TECHNOLOGIST I">MEDICAL TECHNOLOGIST I</option>
+                      <option value="PHARMACIST I">PHARMACIST I</option>
+                      <option value="SOCIAL WELFARE OFFICER I">SOCIAL WELFARE OFFICER I</option>
+                      <option value="ADMINISTRATIVE OFFICER">ADMINISTRATIVE OFFICER</option>
+                      <option value="Hospital Administrator">Hospital Administrator</option>
+                    </select>
+                  )}
                 </div>
 
-                {/* Ward / Department input with datalist */}
+                {/* Ward / Department / Station: Clean Select Dropdown */}
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Department / Unit / Station:</label>
-                  <input
-                    type="text"
-                    list="dept-suggestions"
-                    value={formDept}
-                    onChange={(e) => setFormDept(e.target.value)}
-                    required
-                    placeholder="e.g. MDRRMO Balamban Command Center / Medical Section"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
-                  />
-                  <datalist id="dept-suggestions">
-                    <option value="MDRRMO Balamban Command Center" />
-                    <option value="Balamban Rescue 911 Station" />
-                    <option value="Barangay Emergency Response (BERT)" />
-                    <option value="Medical Section" />
-                    <option value="Medical Social Service Unit" />
-                    <option value="Emergency Department (ER)" />
-                    <option value="ICU NEW ROOM" />
-                    <option value="MEDICAL WARD (WARD 4)" />
-                    <option value="WARD 5 (OB-GYN)" />
-                    <option value="WARD 6 (Nursery / Pedia)" />
-                    <option value="WARD 7 (Surgical)" />
-                    <option value="WARD 10 (Isolation)" />
-                    <option value="Outpatient Clinic (OPD)" />
-                    <option value="Pharmacy" />
-                    <option value="Laboratory" />
-                    <option value="Hospital Administration / IT" />
-                  </datalist>
+                  {formHospitalId === 'balamban_rescue' ? (
+                    <select
+                      value={formDept}
+                      onChange={(e) => setFormDept(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="MDRRMO Balamban Command Center">MDRRMO Balamban Command Center</option>
+                      <option value="Balamban Rescue 911 Station">Balamban Rescue 911 Station</option>
+                      <option value="Barangay Emergency Response (BERT)">Barangay Emergency Response (BERT)</option>
+                      <option value="Transcentral Highway Rescue Outpost">Transcentral Highway Rescue Outpost</option>
+                      <option value="Municipal Health Office (MHO)">Municipal Health Office (MHO)</option>
+                      <option value="Emergency Operations Center (EOC)">Emergency Operations Center (EOC)</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={formDept}
+                      onChange={(e) => setFormDept(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Medical Section">Medical Section</option>
+                      <option value="Emergency Department (ER)">Emergency Department (ER)</option>
+                      <option value="ICU NEW ROOM">ICU NEW ROOM</option>
+                      <option value="MEDICAL WARD (WARD 4)">MEDICAL WARD (WARD 4)</option>
+                      <option value="WARD 5 (OB-GYN)">WARD 5 (OB-GYN)</option>
+                      <option value="WARD 6 (Nursery / Pedia)">WARD 6 (Nursery / Pedia)</option>
+                      <option value="WARD 7 (Surgical)">WARD 7 (Surgical)</option>
+                      <option value="WARD 10 (Isolation)">WARD 10 (Isolation)</option>
+                      <option value="Outpatient Clinic (OPD)">Outpatient Clinic (OPD)</option>
+                      <option value="Pharmacy">Pharmacy</option>
+                      <option value="Laboratory">Laboratory</option>
+                      <option value="Medical Social Service Unit">Medical Social Service Unit</option>
+                      <option value="Billing / Claims Section">Billing / Claims Section</option>
+                      <option value="Cashier Section">Cashier Section</option>
+                      <option value="Radiology / X-Ray">Radiology / X-Ray</option>
+                      <option value="Dental Clinic">Dental Clinic</option>
+                      <option value="Dietary / Nutrition">Dietary / Nutrition</option>
+                      <option value="Hospital Administration / IT">Hospital Administration / IT</option>
+                    </select>
+                  )}
                 </div>
 
                 {/* Assigned Barangay (If Rescue) */}
@@ -1358,13 +1403,26 @@ export default function AdminUsersPage() {
                   />
                 </div>
 
+                {/* Employee / Station ID with Auto-Generate Action */}
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-700 font-bold mb-1">Employee / Station ID:</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-bold">
+                      Employee / Station ID (Auto-Generated):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setFormEmpId(generateAutoEmpId(formHospitalId))}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center space-x-1"
+                    >
+                      <span>🔄 Auto-Generate ID</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={formEmpId}
                     onChange={(e) => setFormEmpId(e.target.value)}
-                    placeholder="e.g. MDRRMO-BAL-01 / DOC10093 / POC1000003"
+                    required
+                    placeholder="e.g. MDRRMO-BAL-01 / CPHB-1092"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
