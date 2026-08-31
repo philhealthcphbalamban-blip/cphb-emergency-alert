@@ -69,10 +69,22 @@ export class RescueService {
           const cloudAlerts: CommunityEmergencyAlert[] = json.alerts;
           const currentLocal = this.getCommunityAlerts();
 
-          // Merge cloud alerts with local alerts
+          // Merge cloud alerts with local alerts (Strict resolution precedence)
           const mergedMap = new Map<string, CommunityEmergencyAlert>();
           currentLocal.forEach(a => mergedMap.set(a.id, a));
-          cloudAlerts.forEach(a => mergedMap.set(a.id, a));
+          cloudAlerts.forEach(a => {
+            const existing = mergedMap.get(a.id);
+            if (existing && (existing.status === 'RESOLVED' || a.status === 'RESOLVED')) {
+              mergedMap.set(a.id, {
+                ...existing,
+                ...a,
+                status: 'RESOLVED',
+                resolved_at: a.resolved_at || existing.resolved_at || new Date().toISOString(),
+              });
+            } else {
+              mergedMap.set(a.id, a);
+            }
+          });
 
           const merged = Array.from(mergedMap.values()).sort(
             (a, b) => new Date(b.dispatched_at).getTime() - new Date(a.dispatched_at).getTime()

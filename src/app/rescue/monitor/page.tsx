@@ -296,18 +296,32 @@ export default function BalambanRescueMonitorPage() {
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => handleAdvanceStatus(alert.id, alert.status)}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer"
-                  >
-                    <span>
-                      {alert.status === 'DISPATCHED' && 'Mark En Route ❯'}
-                      {alert.status === 'EN_ROUTE' && 'Mark On Scene ❯'}
-                      {alert.status === 'ON_SCENE' && 'Transporting to CPHB ❯'}
-                      {alert.status === 'TRANSPORTING_TO_CPHB' && 'Arrived at CPHB ER ❯'}
-                      {alert.status === 'ARRIVED_AT_CPHB' && 'Resolve & Clear Incident ✓'}
-                    </span>
-                  </button>
+                  <div className="flex items-center space-x-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => handleAdvanceStatus(alert.id, alert.status)}
+                      className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                    >
+                      <span>
+                        {alert.status === 'DISPATCHED' && 'Mark En Route ❯'}
+                        {alert.status === 'EN_ROUTE' && 'Mark On Scene ❯'}
+                        {alert.status === 'ON_SCENE' && 'Transport to CPHB ❯'}
+                        {alert.status === 'TRANSPORTING_TO_CPHB' && 'Arrived at CPHB ❯'}
+                        {alert.status === 'ARRIVED_AT_CPHB' && 'Resolve & Clear ✓'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        audioController.stopAllImmediate();
+                        await RescueService.updateAlertStatus(alert.id, 'RESOLVED', 'Resolved & Cleared via Rescue TV Screen');
+                        loadAlerts();
+                      }}
+                      className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Resolve & Clear Code ✓</span>
+                    </button>
+                  </div>
                 </div>
 
               </div>

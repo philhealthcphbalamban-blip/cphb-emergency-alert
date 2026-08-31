@@ -329,17 +329,32 @@ export default function CommandHubPage() {
                         </div>
                       </div>
 
-                      {/* Advance Status Button */}
-                      <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                      {/* Advance & Resolve Buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t border-white/10 flex-wrap gap-2">
                         <span className="text-xs text-slate-400 font-mono">
                           Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString()}
                         </span>
-                        <button
-                          onClick={() => handleAdvanceRescueStatus(alert.id, alert.status)}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow transition flex items-center space-x-1"
-                        >
-                          <span>Advance: {alert.status === 'ARRIVED_AT_CPHB' ? 'Resolve & Clear' : 'Next Step →'}</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleAdvanceRescueStatus(alert.id, alert.status)}
+                            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow transition flex items-center space-x-1 cursor-pointer"
+                          >
+                            <span>Advance Step ❯</span>
+                          </button>
+                          <button
+                            onClick={async () => {
+                              audioEngine.stopSiren();
+                              audioEngine.stopSpeech();
+                              await RescueService.updateAlertStatus(alert.id, 'RESOLVED', 'Resolved & Cleared via EOC Command Hub');
+                              setCommunityAlerts(RescueService.getCommunityAlerts());
+                              audioEngine.playChime();
+                            }}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center space-x-1.5 cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>Resolve & Clear Code ✓</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

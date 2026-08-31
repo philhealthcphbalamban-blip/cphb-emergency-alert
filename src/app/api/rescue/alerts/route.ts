@@ -35,9 +35,17 @@ export async function GET(req: NextRequest) {
 
       if (!error && data && data.length > 0) {
         const fromDb: CommunityEmergencyAlert[] = data.map((d: any) => {
-          if (d.patient_details?.rescue_alert) {
-            return d.patient_details.rescue_alert;
+          const isDbResolved = d.status === 'RESOLVED';
+          const innerAlert = d.patient_details?.rescue_alert;
+
+          if (innerAlert) {
+            return {
+              ...innerAlert,
+              status: isDbResolved ? 'RESOLVED' : (innerAlert.status === 'RESOLVED' ? 'RESOLVED' : innerAlert.status),
+              resolved_at: isDbResolved ? (d.resolved_at || new Date().toISOString()) : innerAlert.resolved_at,
+            };
           }
+
           return {
             id: d.id,
             emergency_type: (d.code_id as CommunityEmergencyType) || 'CODE_TRAUMA',
@@ -46,19 +54,32 @@ export async function GET(req: NextRequest) {
             patient_condition: d.patient_details?.patient_condition || 'Emergency Response Dispatch',
             caller_name: d.triggered_by_name || 'MDRRMO 911 Dispatcher',
             caller_phone: d.patient_details?.caller_phone || '0918-911-0001',
-            status: d.status === 'ACTIVE' || d.status === 'RESPONDING' ? 'DISPATCHED' : (d.status as any),
+            status: isDbResolved ? 'RESOLVED' : (d.status === 'ACTIVE' || d.status === 'RESPONDING' ? 'DISPATCHED' : (d.status as any)),
             dispatched_at: d.triggered_at,
-            resolved_at: d.resolved_at || undefined,
+            resolved_at: isDbResolved ? (d.resolved_at || new Date().toISOString()) : undefined,
             responding_units: d.patient_details?.responding_units || [],
             destination_facility: d.patient_details?.destination_facility || 'Cebu Provincial Hospital - Balamban (CPHB ER)',
             triage_notes: d.resolution_notes || d.patient_details?.triage_notes || '',
           };
         });
 
-        // Merge with memory alerts
+        // Merge with memory alerts (Strict resolution wins)
         const mergedMap = new Map<string, CommunityEmergencyAlert>();
         fromDb.forEach(a => mergedMap.set(a.id, a));
-        inMemoryRescueAlerts.forEach(a => mergedMap.set(a.id, a));
+        inMemoryRescueAlerts.forEach(a => {
+          const existing = mergedMap.get(a.id);
+          if (existing && (existing.status === 'RESOLVED' || a.status === 'RESOLVED')) {
+            mergedMap.set(a.id, {
+              ...existing,
+              ...a,
+              status: 'RESOLVED',
+              resolved_at: a.resolved_at || existing.resolved_at || new Date().toISOString(),
+            });
+          } else {
+            mergedMap.set(a.id, a);
+          }
+        });
+
         inMemoryRescueAlerts = Array.from(mergedMap.values()).sort(
           (a, b) => new Date(b.dispatched_at).getTime() - new Date(a.dispatched_at).getTime()
         );
@@ -134,7 +155,7 @@ export async function POST(req: NextRequest) {
       const resolvedAt = status === 'RESOLVED' ? new Date().toISOString() : undefined;
 
       inMemoryRescueAlerts = inMemoryRescueAlerts.map(a => {
-        if (a.id === alertId) {
+        if (!alertId || alertId === 'any' || a.id === alertId) {
           return {
             ...a,
             status,
@@ -145,19 +166,28 @@ export async function POST(req: NextRequest) {
         return a;
       });
 
+      const updatedObj = inMemoryRescueAlerts.find(a => a.id === alertId);
+
       try {
-        await supabase
+        let query = supabase
           .from('emergency_alerts')
           .update({
             status: status === 'RESOLVED' ? 'RESOLVED' : 'ACTIVE',
             resolved_at: resolvedAt,
             resolution_notes: notes,
             patient_details: {
-              ...(inMemoryRescueAlerts.find(a => a.id === alertId) || {}),
-              rescue_alert: inMemoryRescueAlerts.find(a => a.id === alertId),
+              ...(updatedObj || {}),
+              rescue_alert: updatedObj ? { ...updatedObj, status } : undefined,
             },
-          })
-          .eq('id', alertId);
+          });
+
+        if (alertId && alertId !== 'any') {
+          query = query.eq('id', alertId);
+        } else {
+          query = query.eq('hospital_id', 'balamban_rescue');
+        }
+
+        await query;
       } catch (dbErr) {
         console.warn('Supabase rescue alert status update warning:', dbErr);
       }
