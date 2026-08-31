@@ -255,7 +255,13 @@ export default function MonitorPage() {
   };
 
   const formatElapsed = (sec: number | undefined) => {
-    if (sec === undefined) return '00:00';
+    if (sec === undefined || isNaN(sec) || sec < 0) return '00:00';
+    if (sec >= 3600) {
+      const hrs = Math.floor(sec / 3600);
+      const mins = Math.floor((sec % 3600) / 60);
+      const remainingSec = sec % 60;
+      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${remainingSec.toString().padStart(2, '0')}`;
+    }
     const mins = Math.floor(sec / 60);
     const remainingSec = sec % 60;
     return `${mins.toString().padStart(2, '0')}:${remainingSec.toString().padStart(2, '0')}`;
