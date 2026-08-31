@@ -10,20 +10,35 @@ const STORAGE_KEY_COMMUNITY_ALERTS = 'cphb_community_rescue_alerts_v1';
 export class RescueService {
   private static listeners: Set<(alerts: CommunityEmergencyAlert[]) => void> = new Set();
   private static channel: BroadcastChannel | null = null;
+  private static isInitialized = false;
+  private static lastHash = '';
 
   public static init() {
-    if (typeof window !== 'undefined' && !this.channel) {
-      try {
+    if (typeof window === 'undefined') return;
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    try {
+      if (typeof window.BroadcastChannel !== 'undefined') {
         this.channel = new BroadcastChannel('cphb_rescue_bus_v1');
         this.channel.onmessage = (event) => {
           if (event.data?.type === 'RESCUE_ALERTS_SYNC') {
             this.notifyListeners();
           }
         };
-      } catch (e) {
-        console.warn('BroadcastChannel error:', e);
       }
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
     }
+
+    // Initial fetch from cloud
+    this.fetchFromCloud();
+
+    // ⚡ 1.5-Second Ultra-Fast Cloud Poller
+    // Guarantees mobile phone dispatches immediately pop up on PC Rescue TV screens
+    setInterval(() => {
+      this.fetchFromCloud();
+    }, 1500);
   }
 
   public static subscribe(callback: (alerts: CommunityEmergencyAlert[]) => void) {
@@ -41,6 +56,45 @@ export class RescueService {
         l(list);
       } catch (e) {}
     });
+  }
+
+  public static async fetchFromCloud(): Promise<CommunityEmergencyAlert[]> {
+    if (typeof window === 'undefined') return [];
+
+    try {
+      const res = await fetch('/api/rescue/alerts', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.alerts)) {
+          const cloudAlerts: CommunityEmergencyAlert[] = json.alerts;
+          const currentLocal = this.getCommunityAlerts();
+
+          // Merge cloud alerts with local alerts
+          const mergedMap = new Map<string, CommunityEmergencyAlert>();
+          currentLocal.forEach(a => mergedMap.set(a.id, a));
+          cloudAlerts.forEach(a => mergedMap.set(a.id, a));
+
+          const merged = Array.from(mergedMap.values()).sort(
+            (a, b) => new Date(b.dispatched_at).getTime() - new Date(a.dispatched_at).getTime()
+          );
+
+          const newHash = merged.map(a => `${a.id}_${a.status}`).join('|');
+          if (newHash !== this.lastHash) {
+            this.lastHash = newHash;
+            try {
+              localStorage.setItem(STORAGE_KEY_COMMUNITY_ALERTS, JSON.stringify(merged));
+            } catch (e) {}
+            this.notifyListeners();
+          }
+
+          return merged;
+        }
+      }
+    } catch (e) {
+      // Offline fallback
+    }
+
+    return this.getCommunityAlerts();
   }
 
   public static getCommunityAlerts(): CommunityEmergencyAlert[] {
@@ -158,6 +212,18 @@ export class RescueService {
       } catch (e) {}
     }
 
+    // ⚡ Sync to Cloud API (broadcasts to all mobile phones and TV monitors)
+    try {
+      fetch('/api/rescue/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'DISPATCH',
+          alert: newAlert,
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+
     this.notifyListeners();
     return newAlert;
   }
@@ -188,6 +254,20 @@ export class RescueService {
         }
       } catch (e) {}
     }
+
+    // ⚡ Sync Status to Cloud API
+    try {
+      fetch('/api/rescue/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'UPDATE_STATUS',
+          alertId,
+          status,
+          notes,
+        }),
+      }).catch(() => {});
+    } catch (e) {}
 
     this.notifyListeners();
   }

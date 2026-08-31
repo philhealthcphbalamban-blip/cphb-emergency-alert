@@ -56,13 +56,15 @@ export default function BalambanRescueMonitorPage() {
     }
   };
 
-  const loadAlerts = () => {
-    const list = RescueService.getCommunityAlerts();
+  const loadAlerts = async () => {
+    const list = await RescueService.fetchFromCloud();
     setAlerts(list);
     syncRescueAudio(list);
   };
 
   useEffect(() => {
+    RescueService.init();
+
     // Keep screen awake for 24/7 Smart TV kiosk
     if ('wakeLock' in navigator) {
       (navigator as any).wakeLock.request('screen').catch(() => {});
@@ -80,7 +82,7 @@ export default function BalambanRescueMonitorPage() {
       syncRescueAudio(updated);
     });
 
-    const poll = setInterval(loadAlerts, 2500);
+    const poll = setInterval(loadAlerts, 2000);
 
     return () => {
       clearInterval(timer);
