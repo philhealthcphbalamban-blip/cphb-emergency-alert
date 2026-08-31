@@ -21,6 +21,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
+import { audioController } from '@/lib/audioController';
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, CPHB_STAFF_MEMBERS } from '@/lib/staffService';
 import { StaffSwitchModal } from '@/components/StaffSwitchModal';
@@ -240,11 +241,17 @@ export const Navbar: React.FC = () => {
               </button>
             )}
 
-            {/* Audio Chime Button */}
+            {/* Audio Silence / Kill Button */}
             <button
-              onClick={() => audioEngine.playChime()}
+              onClick={() => {
+                if (audioController.getState() !== 'IDLE') {
+                  audioController.stopAllImmediate();
+                } else {
+                  audioEngine.playChime();
+                }
+              }}
               className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm"
-              title="Test Chime Sound"
+              title="Silence All Audio / Play Chime"
             >
               <Volume2 className="h-3.5 w-3.5 text-amber-500" />
             </button>

@@ -58,14 +58,25 @@ export default function MonitorPage() {
     const list = await EmergencyService.getActiveAlerts(activeHospital.id);
     setActiveAlerts(list);
 
-    if (monitorMode === 'HOSPITAL' || monitorMode === 'UNIFIED') {
+    if (monitorMode === 'HOSPITAL') {
+      if (list.length === 0) {
+        if (lastAlertsHashRef.current !== '') {
+          lastAlertsHashRef.current = '';
+          audioController.stopAllImmediate();
+        }
+        return;
+      }
+      const newHash = list.map(a => a.id).sort().join(',');
+      if (newHash !== lastAlertsHashRef.current) {
+        lastAlertsHashRef.current = newHash;
+        audioController.syncAlerts(list);
+      }
+    } else if (monitorMode === 'UNIFIED') {
       const newHash = list.map(a => a.id).sort().join(',');
       if (newHash !== lastAlertsHashRef.current) {
         lastAlertsHashRef.current = newHash;
         if (list.length > 0) {
           audioController.syncAlerts(list);
-        } else if (monitorMode === 'HOSPITAL') {
-          audioController.stopAllImmediate();
         }
       }
     }
@@ -75,16 +86,19 @@ export default function MonitorPage() {
     const comm = RescueService.getCommunityAlerts();
     setCommunityAlerts(comm);
 
-    if (monitorMode === 'RESCUE' || (monitorMode === 'UNIFIED' && activeAlerts.length === 0)) {
+    if (monitorMode === 'RESCUE') {
       const activeComm = comm.filter(c => c.status !== 'RESOLVED');
+      if (activeComm.length === 0) {
+        if (lastRescueHashRef.current !== '') {
+          lastRescueHashRef.current = '';
+          audioController.stopAllImmediate();
+        }
+        return;
+      }
       const newHash = activeComm.map(c => `${c.id}_${c.status}`).sort().join(',');
       if (newHash !== lastRescueHashRef.current) {
         lastRescueHashRef.current = newHash;
-        if (activeComm.length > 0) {
-          audioController.syncCommunityAlerts(activeComm);
-        } else if (monitorMode === 'RESCUE') {
-          audioController.stopAllImmediate();
-        }
+        audioController.syncCommunityAlerts(activeComm);
       }
     }
   };
@@ -93,6 +107,7 @@ export default function MonitorPage() {
     setMonitorMode(mode);
     lastAlertsHashRef.current = '';
     lastRescueHashRef.current = '';
+    audioController.stopAllImmediate();
     unlockAudioEngine();
     if (mode === 'RESCUE') {
       const active = communityAlerts.filter(c => c.status !== 'RESOLVED');
