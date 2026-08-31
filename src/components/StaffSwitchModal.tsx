@@ -19,6 +19,7 @@ import {
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, AdminAuthService } from '@/lib/staffService';
 import { HospitalService } from '@/lib/hospitalService';
+import { audioEngine } from '@/lib/audioEngine';
 
 interface Props {
   isOpen: boolean;
@@ -41,9 +42,9 @@ export const StaffSwitchModal: React.FC<Props> = ({
   const [quickPinInput, setQuickPinInput] = useState<string>('');
   const [quickPinMsg, setQuickPinMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
-  // Admin PIN prompt state
-  const [pendingAdminStaff, setPendingAdminStaff] = useState<HospitalStaff | null>(null);
-  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  // PIN verification state for ALL staff switching
+  const [pendingStaff, setPendingStaff] = useState<HospitalStaff | null>(null);
+  const [pinInput, setPinInput] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
 
   if (!isOpen) return null;
@@ -89,6 +90,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
 
     const res = StaffService.loginWithPin(quickPinInput.trim());
     if (res.success && res.staff) {
+      audioEngine.playChime();
       onSelectStaff(res.staff);
       setQuickPinInput('');
       onClose();
@@ -99,31 +101,41 @@ export const StaffSwitchModal: React.FC<Props> = ({
   };
 
   const handleStaffClick = (staff: HospitalStaff) => {
-    if (staff.is_admin) {
-      setPendingAdminStaff(staff);
-      setAdminPinInput('');
-      setPinError('');
+    if (staff.id === currentStaff.id) {
+      onClose();
+      return;
+    }
+    setPendingStaff(staff);
+    setPinInput('');
+    setPinError('');
+  };
+
+  const handleVerifyStaffPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingStaff) return;
+
+    const enteredPin = pinInput.trim();
+    if (!enteredPin) {
+      setPinError('Palihug isulod ang imong PIN!');
       return;
     }
 
-    // When switching to Doctor, Nurse or Rescue, auto switch active facility!
-    sessionStorage.removeItem('cphb_admin_unlocked');
-    onSelectStaff(staff);
-    onClose();
-  };
+    // Verify against staff's own PIN code OR Master Admin PIN
+    const isStaffPinMatch = pendingStaff.pin_code && pendingStaff.pin_code === enteredPin;
+    const isMasterAdminMatch = await AdminAuthService.verifyPinAsync(enteredPin);
 
-  const handleVerifyAdminPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const isValid = await AdminAuthService.verifyPinAsync(adminPinInput);
-    if (isValid) {
-      sessionStorage.setItem('cphb_admin_unlocked', 'true');
-      if (pendingAdminStaff) {
-        onSelectStaff(pendingAdminStaff);
+    if (isStaffPinMatch || isMasterAdminMatch) {
+      if (pendingStaff.is_admin) {
+        sessionStorage.setItem('cphb_admin_unlocked', 'true');
+      } else {
+        sessionStorage.removeItem('cphb_admin_unlocked');
       }
-      setPendingAdminStaff(null);
+      audioEngine.playChime();
+      onSelectStaff(pendingStaff);
+      setPendingStaff(null);
       onClose();
     } else {
-      setPinError('Sayop ang Admin PIN!');
+      setPinError('❌ Sayop ang PIN Code! Palihug sulayi pag-usab.');
     }
   };
 
@@ -370,8 +382,9 @@ export const StaffSwitchModal: React.FC<Props> = ({
                         <Check className="h-4 w-4" />
                       </span>
                     ) : (
-                      <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-black hover:bg-blue-600 hover:text-white transition border border-slate-200 shadow-2xs">
-                        {staff.is_admin ? 'Admin PIN 🔒' : 'Switch Duty →'}
+                      <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-black hover:bg-blue-600 hover:text-white transition border border-slate-200 shadow-2xs flex items-center space-x-1">
+                        <KeyRound className="h-3.5 w-3.5 text-purple-600" />
+                        <span>Enter PIN 🔒</span>
                       </span>
                     )}
                   </div>
@@ -390,36 +403,70 @@ export const StaffSwitchModal: React.FC<Props> = ({
         {/* Modal Footer */}
         <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500 font-medium shrink-0 flex items-center justify-between px-6">
           <span>Showing <strong>{filtered.length}</strong> of <strong>{allStaff.length}</strong> personnel</span>
-          <span className="text-[11px] text-slate-400">Wards & Doctors switch instantly with 1-click</span>
+          <span className="text-[11px] text-purple-800 font-bold flex items-center">
+            <Lock className="h-3 w-3 mr-1 text-purple-600" />
+            4-Digit PIN Security required to switch duty
+          </span>
         </div>
 
       </div>
 
-      {/* ADMIN PIN VERIFICATION MODAL */}
-      {pendingAdminStaff && (
+      {/* 🔒 UNIVERSAL PERSONNEL PIN AUTHENTICATION MODAL */}
+      {pendingStaff && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in">
           <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4 text-center">
-            <div className="h-14 w-14 bg-slate-900 text-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
-              <Lock className="h-7 w-7" />
+            
+            {/* Avatar & Role */}
+            <div className="flex flex-col items-center justify-center space-y-2">
+              <div 
+                className="h-16 w-16 rounded-2xl flex items-center justify-center font-black text-lg text-white shadow-lg shrink-0"
+                style={{ backgroundColor: pendingStaff.color_hex }}
+              >
+                {pendingStaff.is_rescue || pendingStaff.hospital_id === 'balamban_rescue' ? (
+                  <Ambulance className="h-8 w-8 text-white" />
+                ) : (
+                  pendingStaff.avatar_initials
+                )}
+              </div>
+              <div>
+                <h4 className="text-base font-black text-slate-900 leading-tight">
+                  {pendingStaff.name}
+                </h4>
+                <div className="flex items-center justify-center space-x-1.5 mt-1 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                    pendingStaff.is_admin ? 'bg-slate-900 text-white' :
+                    pendingStaff.is_rescue || pendingStaff.hospital_id === 'balamban_rescue' ? 'bg-red-100 text-red-800 border border-red-200' :
+                    pendingStaff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                    'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  }`}>
+                    {pendingStaff.role}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-bold">
+                    {pendingStaff.department}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <h4 className="text-base font-black text-slate-900">Administrator Security Access</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Enter Admin PIN to switch to Administrator Mode</p>
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-600">
+              <p className="font-semibold text-slate-700">
+                Palihug isulod ang imong <strong>Security PIN</strong> aron maka-login sa imong duty station.
+              </p>
             </div>
 
-            <form onSubmit={handleVerifyAdminPin} className="space-y-3">
+            <form onSubmit={handleVerifyStaffPin} className="space-y-3">
               <input
                 type="password"
-                value={adminPinInput}
-                onChange={(e) => setAdminPinInput(e.target.value)}
-                placeholder="Enter PIN (Default: 1234)"
+                maxLength={6}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="Enter 4-Digit PIN"
                 autoFocus
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-center font-mono font-bold text-sm tracking-widest focus:outline-none focus:border-blue-600 focus:bg-white"
+                className="w-full bg-slate-50 border-2 border-purple-300 focus:border-purple-600 rounded-xl px-4 py-3 text-center font-mono font-black text-lg tracking-widest focus:outline-none focus:bg-white shadow-xs"
               />
 
               {pinError && (
-                <p className="text-xs font-bold text-red-600 bg-red-50 py-1.5 rounded-lg border border-red-200">
+                <p className="text-xs font-bold text-red-600 bg-red-50 py-1.5 rounded-lg border border-red-200 animate-shake">
                   {pinError}
                 </p>
               )}
@@ -427,17 +474,17 @@ export const StaffSwitchModal: React.FC<Props> = ({
               <div className="flex items-center space-x-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setPendingAdminStaff(null)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold transition"
+                  onClick={() => setPendingStaff(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider transition flex items-center justify-center space-x-1"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider transition flex items-center justify-center space-x-1.5 shadow-md"
                 >
                   <Unlock className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Verify</span>
+                  <span>Verify PIN</span>
                 </button>
               </div>
             </form>
