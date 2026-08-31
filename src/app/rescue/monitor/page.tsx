@@ -37,7 +37,9 @@ import { audioEngine } from '@/lib/audioEngine';
 import { audioController } from '@/lib/audioController';
 
 export default function BalambanRescueMonitorPage() {
-  const [alerts, setAlerts] = useState<CommunityEmergencyAlert[]>([]);
+  const [alerts, setAlerts] = useState<CommunityEmergencyAlert[]>(() => {
+    return RescueService.getCommunityAlerts();
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [currentTime, setCurrentTime] = useState('');

@@ -33,8 +33,12 @@ import { audioController } from '@/lib/audioController';
 export default function MonitorPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
   const isRescueInit = activeHospital.isRescue || activeHospital.id === 'balamban_rescue';
-  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
-  const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>([]);
+  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>(() => {
+    return EmergencyService.getActiveAlertsSync(activeHospital.id);
+  });
+  const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>(() => {
+    return RescueService.getCommunityAlerts();
+  });
   const [monitorMode, setMonitorMode] = useState<'HOSPITAL' | 'RESCUE' | 'UNIFIED'>(isRescueInit ? 'RESCUE' : 'HOSPITAL');
   const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);

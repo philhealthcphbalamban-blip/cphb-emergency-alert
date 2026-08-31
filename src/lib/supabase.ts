@@ -229,6 +229,19 @@ export class EmergencyService {
     return [];
   }
 
+  public static getActiveAlertsSync(hospitalId?: string): EmergencyAlert[] {
+    if (typeof window === 'undefined') return [];
+    const hid = hospitalId || 'cphb';
+    try {
+      const stored = localStorage.getItem(`cph_emergency_history_${hid}`);
+      if (stored) {
+        const parsed: EmergencyAlert[] = JSON.parse(stored);
+        return parsed.filter(a => (a.status === 'ACTIVE' || a.status === 'RESPONDING') && (!a.hospital_id || a.hospital_id === hid));
+      }
+    } catch (e) {}
+    return [];
+  }
+
   public static async getActiveAlert(hospitalId?: string): Promise<EmergencyAlert | null> {
     const list = await this.getActiveAlerts(hospitalId);
     return list.length > 0 ? list[0] : null;

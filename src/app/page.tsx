@@ -37,9 +37,13 @@ import { audioEngine } from '@/lib/audioEngine';
 
 export default function CommandHubPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
-  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
-  const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>(() => {
+    return EmergencyService.getActiveAlertsSync(activeHospital.id);
+  });
+  const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>(() => {
+    return RescueService.getCommunityAlerts();
+  });
+  const [loading, setLoading] = useState(false);
   const [testTriggering, setTestTriggering] = useState(false);
 
   const isRescueFacility = activeHospital.isRescue || activeHospital.id === 'balamban_rescue';
