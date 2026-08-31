@@ -78,8 +78,22 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
 
+    if (error) {
+      console.warn('Supabase query error in GET /api/emergency/alerts:', error.message);
+      const cached = inMemoryAlertHistory.filter(
+        a => (a.hospital_id || 'cphb') === hospitalId && (a.status === 'ACTIVE' || a.status === 'RESPONDING')
+      );
+      return NextResponse.json({
+        success: true,
+        activeAlert: cached[0] || null,
+        activeAlerts: cached,
+        count: cached.length,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     let activeAlerts: EmergencyAlert[] = [];
-    if (!error && data) {
+    if (data) {
       const filtered = data.filter(d => {
         const h = d.hospital_id || 'cphb';
         return hospitalId === 'cphb' ? (h === 'cphb' || !d.hospital_id) : h === hospitalId;
@@ -91,7 +105,7 @@ export async function GET(req: NextRequest) {
       }));
     }
 
-    if (activeAlerts.length === 0) {
+    if (activeAlerts.length === 0 && inMemoryAlertHistory.length > 0) {
       activeAlerts = inMemoryAlertHistory.filter(
         a => (a.hospital_id || 'cphb') === hospitalId && (a.status === 'ACTIVE' || a.status === 'RESPONDING')
       );

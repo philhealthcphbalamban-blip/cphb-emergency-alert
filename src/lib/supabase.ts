@@ -152,6 +152,8 @@ export class EmergencyService {
     });
   }
 
+  private static nullStreak = 0;
+
   public static async getActiveAlerts(hospitalId?: string): Promise<EmergencyAlert[]> {
     const hid = hospitalId || HospitalService.getActiveHospital().id;
 
@@ -163,28 +165,42 @@ export class EmergencyService {
         if (json.success && Array.isArray(json.activeAlerts)) {
           const serverActive: EmergencyAlert[] = json.activeAlerts;
 
-          // Master synchronize with local storage
-          if (typeof window !== 'undefined') {
-            try {
-              const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
-              const updatedHistory = stored.map((s: any) => {
-                const isStillActive = serverActive.some(a => a.id === s.id);
-                if (!isStillActive && (s.status === 'ACTIVE' || s.status === 'RESPONDING')) {
-                  return { ...s, status: 'RESOLVED', resolved_at: new Date().toISOString() };
-                }
-                return s;
-              });
-              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(updatedHistory));
-            } catch (e) {}
-          }
+          if (serverActive.length > 0) {
+            this.nullStreak = 0;
+            this.lastAlertId = serverActive[0].id;
 
-          if (serverActive.length === 0) {
-            this.lastAlertId = null;
-            return [];
+            // Update local storage cache
+            if (typeof window !== 'undefined') {
+              try {
+                const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
+                const merged = [...serverActive, ...stored.filter((s: any) => !serverActive.some((a: any) => a.id === s.id))];
+                localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(merged));
+              } catch (e) {}
+            }
+            return serverActive;
+          } else {
+            // Server returned 0 active alerts
+            this.nullStreak++;
+            // Require 2 consecutive clean confirmations before resolving locally
+            if (this.nullStreak >= 2) {
+              if (typeof window !== 'undefined') {
+                try {
+                  const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
+                  const updatedHistory = stored.map((s: any) => {
+                    if (s.status === 'ACTIVE' || s.status === 'RESPONDING') {
+                      return { ...s, status: 'RESOLVED', resolved_at: new Date().toISOString() };
+                    }
+                    return s;
+                  });
+                  localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(updatedHistory));
+                } catch (e) {}
+              }
+              this.lastAlertId = null;
+              return [];
+            }
+            // Prevent 1-frame screen flash
+            return this.getActiveAlertsSync(hid);
           }
-
-          this.lastAlertId = serverActive[0].id;
-          return serverActive;
         }
       }
     } catch (e) {
@@ -215,15 +231,8 @@ export class EmergencyService {
               code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
               patient_details: d.patient_details || null,
             }));
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(list));
-              } catch (e) {}
-            }
+            this.nullStreak = 0;
             return list;
-          } else {
-            // Supabase confirmed 0 active alerts
-            return [];
           }
         }
       } catch (e) {
@@ -232,18 +241,7 @@ export class EmergencyService {
     }
 
     // 3. Offline LocalStorage Cache
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(`cph_emergency_history_${hid}`);
-        if (stored) {
-          const parsed: EmergencyAlert[] = JSON.parse(stored);
-          const activeLocal = parsed.filter(a => (a.status === 'ACTIVE' || a.status === 'RESPONDING') && (!a.hospital_id || a.hospital_id === hid));
-          return activeLocal;
-        }
-      } catch (e) {}
-    }
-
-    return [];
+    return this.getActiveAlertsSync(hid);
   }
 
   public static getActiveAlertsSync(hospitalId?: string): EmergencyAlert[] {
