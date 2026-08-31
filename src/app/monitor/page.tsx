@@ -181,10 +181,13 @@ export default function MonitorPage() {
     };
   }, []);
 
+  const alertStartTimesRef = useRef<Record<string, number>>({});
+
   // Elapsed time counters for all active alerts
   useEffect(() => {
     if (activeAlerts.length === 0) {
       setElapsedTimes({});
+      alertStartTimesRef.current = {};
       return;
     }
 
@@ -192,7 +195,15 @@ export default function MonitorPage() {
       const now = Date.now();
       const updated: Record<string, number> = {};
       activeAlerts.forEach((alert) => {
-        const start = new Date(alert.triggered_at).getTime();
+        if (!alertStartTimesRef.current[alert.id]) {
+          const parsed = new Date(alert.triggered_at).getTime();
+          if (!isNaN(parsed) && parsed > 0 && parsed <= now) {
+            alertStartTimesRef.current[alert.id] = parsed;
+          } else {
+            alertStartTimesRef.current[alert.id] = now;
+          }
+        }
+        const start = alertStartTimesRef.current[alert.id];
         updated[alert.id] = Math.max(0, Math.floor((now - start) / 1000));
       });
       setElapsedTimes(updated);

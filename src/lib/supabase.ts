@@ -100,16 +100,27 @@ export class EmergencyService {
 
     // ⚡ Ultra-Fast 1.5-Second HTTP REST Heartbeat Poller
     // Guarantees all mobile phones and desktop computers receive alerts in real-time
+    let nullStreak = 0;
     setInterval(async () => {
       try {
         const activeAlert = await this.getActiveAlert();
         const currentId = activeAlert ? activeAlert.id : null;
         
-        if (currentId !== this.lastAlertId) {
-          this.lastAlertId = currentId;
-          this.notifyListeners(activeAlert, activeAlert ? 'TRIGGERED' : 'RESOLVED');
-        } else if (activeAlert) {
-          this.notifyListeners(activeAlert, 'POLL_SYNC');
+        if (currentId) {
+          nullStreak = 0;
+          if (currentId !== this.lastAlertId) {
+            this.lastAlertId = currentId;
+            this.notifyListeners(activeAlert, 'TRIGGERED');
+          } else {
+            this.notifyListeners(activeAlert, 'POLL_SYNC');
+          }
+        } else {
+          nullStreak++;
+          // Only fire RESOLVED if 3 consecutive polls return 0 active alerts
+          if (this.lastAlertId !== null && nullStreak >= 3) {
+            this.lastAlertId = null;
+            this.notifyListeners(null, 'RESOLVED');
+          }
         }
       } catch (e) {
         // ignore
@@ -149,33 +160,16 @@ export class EmergencyService {
       const res = await fetch(`/api/emergency/alerts?hospital_id=${hid}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.success && Array.isArray(json.activeAlerts)) {
-          if (json.activeAlerts.length > 0) {
-            // Update local storage cache
-            if (typeof window !== 'undefined') {
-              try {
-                const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
-                const merged = [...json.activeAlerts, ...stored.filter((s: any) => !json.activeAlerts.some((a: any) => a.id === s.id))];
-                localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(merged));
-              } catch (e) {}
-            }
-            return json.activeAlerts;
-          } else {
-            // Server explicitly says 0 active alerts
-            if (typeof window !== 'undefined') {
-              try {
-                const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
-                const hasResolved = stored.some((s: any) => s.status === 'RESOLVED');
-                if (hasResolved) {
-                  // Clean up local storage active items if confirmed resolved
-                  const cleared = stored.map((s: any) => ({ ...s, status: s.status === 'ACTIVE' || s.status === 'RESPONDING' ? 'RESOLVED' : s.status }));
-                  localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(cleared));
-                  return [];
-                }
-              } catch (e) {}
-            }
-            return [];
+        if (json.success && Array.isArray(json.activeAlerts) && json.activeAlerts.length > 0) {
+          // Update local storage cache
+          if (typeof window !== 'undefined') {
+            try {
+              const stored = JSON.parse(localStorage.getItem(`cph_emergency_history_${hid}`) || '[]');
+              const merged = [...json.activeAlerts, ...stored.filter((s: any) => !json.activeAlerts.some((a: any) => a.id === s.id))];
+              localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(merged));
+            } catch (e) {}
           }
+          return json.activeAlerts;
         }
       }
     } catch (e) {
@@ -193,17 +187,25 @@ export class EmergencyService {
 
         const { data, error } = await query;
 
-        if (data && !error) {
+        if (data && !error && data.length > 0) {
           const filtered = data.filter(d => {
             const h = d.hospital_id || 'cphb';
             return hid === 'cphb' ? (h === 'cphb' || !d.hospital_id) : h === hid;
           });
 
-          return filtered.map(d => ({
-            ...d,
-            code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
-            patient_details: d.patient_details || null,
-          }));
+          if (filtered.length > 0) {
+            const list = filtered.map(d => ({
+              ...d,
+              code_details: EMERGENCY_CODES[d.code_id] || EMERGENCY_CODES.code_blue,
+              patient_details: d.patient_details || null,
+            }));
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`cph_emergency_history_${hid}`, JSON.stringify(list));
+              } catch (e) {}
+            }
+            return list;
+          }
         }
       } catch (e) {
         console.warn('Supabase fetch active alerts failed:', e);
@@ -217,7 +219,9 @@ export class EmergencyService {
         if (stored) {
           const parsed: EmergencyAlert[] = JSON.parse(stored);
           const activeLocal = parsed.filter(a => (a.status === 'ACTIVE' || a.status === 'RESPONDING') && (!a.hospital_id || a.hospital_id === hid));
-          return activeLocal;
+          if (activeLocal.length > 0) {
+            return activeLocal;
+          }
         }
       } catch (e) {}
     }
