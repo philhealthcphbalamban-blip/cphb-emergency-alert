@@ -209,9 +209,15 @@ export const StaffSwitchModal: React.FC<Props> = ({
               <span className="text-xs sm:text-sm font-black text-slate-900 truncate block">
                 {currentStaff.name} <span className="text-slate-600 font-normal">({currentStaff.role})</span> • {currentStaff.department}
               </span>
-              <span className="text-[11px] font-mono text-emerald-900 font-bold">
-                Accred No: {currentStaff.accreditation_no || currentStaff.prc_license_no || 'N/A'} {currentStaff.pin_code && `• PIN: ${currentStaff.pin_code}`}
-              </span>
+              <div className="flex items-center space-x-2 text-[11px] font-mono text-emerald-900 font-bold mt-0.5">
+                <span>ID: {currentStaff.employee_id}</span>
+                {currentStaff.pin_code && (
+                  <span className="text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-300 text-[10px] inline-flex items-center">
+                    <Lock className="h-2.5 w-2.5 mr-0.5 inline" />
+                    Keypad PIN Active
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300 flex items-center shrink-0 ml-2">

@@ -232,7 +232,10 @@ export default function AdminUsersPage() {
     setFormPrcNo('');
     setFormSpecialization('');
     setFormContact('Loc 101');
-    setFormPinCode('');
+    const defaultPin = initialFacility === 'balamban_rescue' 
+      ? String(9110 + (StaffService.getAllStaff().filter(s => s.is_rescue).length))
+      : String(Math.floor(1000 + Math.random() * 9000));
+    setFormPinCode(defaultPin);
     setFormAssignedBarangay('');
     setIsFormOpen(true);
   };
@@ -420,8 +423,13 @@ export default function AdminUsersPage() {
 
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName) {
+    if (!formName.trim()) {
       alert('Palihug isulod ang Ngalan!');
+      return;
+    }
+
+    if (!formPinCode || formPinCode.trim().length < 4) {
+      alert('⚠️ REQUIRED ANG SECURITY PIN: Palihug pagbutang og 4 hangtod 6 ka numero nga Security PIN (e.g. 9110, 1234, 2026) para sa account!');
       return;
     }
 
@@ -1264,20 +1272,38 @@ export default function AdminUsersPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 
-                {/* 4-Digit Login PIN Code */}
+                {/* 4-Digit Login PIN Code (REQUIRED) */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1 flex items-center justify-between">
-                    <span>Quick Login PIN (4–6 Digits):</span>
-                    <span className="text-purple-700 font-mono font-bold text-[10px]">Keypad Access</span>
+                  <label className="block text-slate-900 font-extrabold text-xs mb-1 flex items-center justify-between">
+                    <span>
+                      Quick Login PIN: <span className="text-red-500 font-black">*</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const auto = formHospitalId === 'balamban_rescue'
+                          ? String(9110 + (StaffService.getAllStaff().filter(s => s.is_rescue).length))
+                          : String(Math.floor(1000 + Math.random() * 9000));
+                        setFormPinCode(auto);
+                      }}
+                      className="text-purple-700 hover:text-purple-900 font-mono font-bold text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 transition"
+                    >
+                      🔄 Auto-PIN
+                    </button>
                   </label>
                   <input
                     type="password"
+                    required
+                    minLength={4}
                     maxLength={6}
                     value={formPinCode}
                     onChange={(e) => setFormPinCode(e.target.value)}
-                    placeholder="e.g. 9110, 9111, 2026, 1234"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                    placeholder="4–6 Digits (e.g. 9110, 1234)"
+                    className="w-full bg-white border-2 border-purple-300 focus:border-purple-600 rounded-xl px-3 py-2 text-slate-900 font-mono font-black focus:outline-none transition shadow-xs"
                   />
+                  <span className="text-[10px] text-slate-500 font-semibold block mt-0.5">
+                    Required (4–6 digits para sa 1-tap keypad login)
+                  </span>
                 </div>
 
                 {/* Position / Designation: Clean Select Dropdown */}
