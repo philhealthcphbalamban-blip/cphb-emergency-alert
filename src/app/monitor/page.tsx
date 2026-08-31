@@ -46,21 +46,60 @@ export default function MonitorPage() {
   const [resolverName, setResolverName] = useState<string>('Dr. Santos, MD (Team Lead)');
 
   const lastAlertsHashRef = useRef<string>('');
+  const lastRescueHashRef = useRef<string>('');
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  const unlockAudioEngine = () => {
+    audioController.unlockAudio();
+    setAudioUnlocked(true);
+  };
 
   const fetchActiveAlerts = async () => {
     const list = await EmergencyService.getActiveAlerts(activeHospital.id);
     setActiveAlerts(list);
 
-    const newHash = list.map(a => a.id).sort().join(',');
-
-    if (newHash !== lastAlertsHashRef.current) {
-      lastAlertsHashRef.current = newHash;
-      audioController.syncAlerts(list);
+    if (monitorMode === 'HOSPITAL' || monitorMode === 'UNIFIED') {
+      const newHash = list.map(a => a.id).sort().join(',');
+      if (newHash !== lastAlertsHashRef.current) {
+        lastAlertsHashRef.current = newHash;
+        if (list.length > 0) {
+          audioController.syncAlerts(list);
+        } else if (monitorMode === 'HOSPITAL') {
+          audioController.stopAllImmediate();
+        }
+      }
     }
   };
 
   const loadCommunityAlerts = () => {
-    setCommunityAlerts(RescueService.getCommunityAlerts());
+    const comm = RescueService.getCommunityAlerts();
+    setCommunityAlerts(comm);
+
+    if (monitorMode === 'RESCUE' || (monitorMode === 'UNIFIED' && activeAlerts.length === 0)) {
+      const activeComm = comm.filter(c => c.status !== 'RESOLVED');
+      const newHash = activeComm.map(c => `${c.id}_${c.status}`).sort().join(',');
+      if (newHash !== lastRescueHashRef.current) {
+        lastRescueHashRef.current = newHash;
+        if (activeComm.length > 0) {
+          audioController.syncCommunityAlerts(activeComm);
+        } else if (monitorMode === 'RESCUE') {
+          audioController.stopAllImmediate();
+        }
+      }
+    }
+  };
+
+  const handleSwitchMode = (mode: 'HOSPITAL' | 'RESCUE' | 'UNIFIED') => {
+    setMonitorMode(mode);
+    lastAlertsHashRef.current = '';
+    lastRescueHashRef.current = '';
+    unlockAudioEngine();
+    if (mode === 'RESCUE') {
+      const active = communityAlerts.filter(c => c.status !== 'RESOLVED');
+      if (active.length > 0) audioController.syncCommunityAlerts(active);
+    } else if (mode === 'HOSPITAL') {
+      if (activeAlerts.length > 0) audioController.syncAlerts(activeAlerts);
+    }
   };
 
   useEffect(() => {
@@ -70,6 +109,11 @@ export default function MonitorPage() {
     // Request Screen Wake Lock for continuous Kiosk display
     if ('wakeLock' in navigator) {
       (navigator as any).wakeLock.request('screen').catch(() => {});
+    }
+
+    // Auto-select RESCUE mode if facility is Balamban Rescue
+    if (activeHospital.isRescue || activeHospital.id === 'balamban_rescue') {
+      setMonitorMode('RESCUE');
     }
 
     const currentStaff = StaffService.getCurrentStaff();
@@ -83,7 +127,11 @@ export default function MonitorPage() {
     const handleHospChange = (e: any) => {
       if (e.detail) {
         setActiveHospital(e.detail);
+        if (e.detail.isRescue || e.detail.id === 'balamban_rescue') {
+          setMonitorMode('RESCUE');
+        }
         lastAlertsHashRef.current = '';
+        lastRescueHashRef.current = '';
       }
     };
     window.addEventListener('cph_hospital_changed', handleHospChange);
@@ -209,7 +257,7 @@ export default function MonitorPage() {
         {/* TV Mode Switcher Tabs */}
         <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
           <button
-            onClick={() => setMonitorMode('HOSPITAL')}
+            onClick={() => handleSwitchMode('HOSPITAL')}
             className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
               monitorMode === 'HOSPITAL'
                 ? 'bg-blue-600 text-white shadow-sm'
@@ -221,7 +269,7 @@ export default function MonitorPage() {
           </button>
 
           <button
-            onClick={() => setMonitorMode('RESCUE')}
+            onClick={() => handleSwitchMode('RESCUE')}
             className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
               monitorMode === 'RESCUE'
                 ? 'bg-red-600 text-white shadow-sm'
@@ -233,7 +281,7 @@ export default function MonitorPage() {
           </button>
 
           <button
-            onClick={() => setMonitorMode('UNIFIED')}
+            onClick={() => handleSwitchMode('UNIFIED')}
             className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
               monitorMode === 'UNIFIED'
                 ? 'bg-slate-900 text-white shadow-sm'

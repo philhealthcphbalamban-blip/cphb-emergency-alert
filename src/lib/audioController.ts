@@ -1,4 +1,5 @@
 import { SirenPattern, EmergencyAlert } from '@/types/emergency';
+import { CommunityEmergencyAlert, COMMUNITY_EMERGENCY_DEFS } from '@/types/rescue';
 import { audioEngine } from './audioEngine';
 
 export type AudioState = 'IDLE' | 'CHIMING' | 'ANNOUNCING' | 'SIREN_ACTIVE';
@@ -9,6 +10,7 @@ export class AudioController {
   private state: AudioState = 'IDLE';
   private repeatTimer: any = null;
   private activeAlerts: EmergencyAlert[] = [];
+  private activeCommunityAlerts: CommunityEmergencyAlert[] = [];
   private isMuted = false;
   private isVoiceDisabled = false;
   private currentSpeechAbort: (() => void) | null = null;
@@ -66,6 +68,10 @@ export class AudioController {
     return this.isVoiceDisabled;
   }
 
+  public unlockAudio() {
+    audioEngine.unlockAudio();
+  }
+
   /**
    * Syncs active alerts with audio engine and triggers proper announcement sequence.
    * Will only trigger if the alert hash changed to prevent stuttering/restarting.
@@ -94,6 +100,35 @@ export class AudioController {
     }
 
     this.playSequence(announcement, priorityAlert.code_details?.siren_pattern || 'hi_lo');
+  }
+
+  /**
+   * Syncs active Balamban Rescue community incidents and broadcasts loud voice + siren
+   */
+  public async syncCommunityAlerts(alerts: CommunityEmergencyAlert[]) {
+    const active = alerts.filter(a => a.status !== 'RESOLVED');
+    this.activeCommunityAlerts = active;
+
+    if (active.length === 0) {
+      this.stopAllImmediate();
+      return;
+    }
+
+    if (this.isMuted) return;
+
+    const first = active[0];
+    const def = COMMUNITY_EMERGENCY_DEFS[first.emergency_type] || COMMUNITY_EMERGENCY_DEFS.CODE_TRAUMA;
+
+    let announcement = '';
+    if (active.length === 1) {
+      announcement = `Attention Balamban Rescue. ${def.title} in Barangay ${first.barangay_name}, ${first.sitio_or_landmark}. Responders please proceed immediately.`;
+    } else {
+      const parts = active.map(a => `${a.emergency_type} at Barangay ${a.barangay_name}`);
+      announcement = `Attention Balamban Rescue: Multiple active community emergency incidents. ${parts.join('. Also active: ')}.`;
+    }
+
+    const pattern: SirenPattern = (first.emergency_type === 'CODE_TRAUMA' || first.emergency_type === 'CODE_RESCUE') ? 'wail' : 'hi_lo';
+    this.playSequence(announcement, pattern);
   }
 
   /**

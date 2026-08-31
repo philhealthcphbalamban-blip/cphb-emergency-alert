@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Building2, Check, X, ShieldAlert, MapPin } from 'lucide-react';
+import { Building2, Check, X, ShieldAlert, MapPin, Ambulance } from 'lucide-react';
 import { HospitalInfo } from '@/types/hospital';
 import { HospitalService } from '@/lib/hospitalService';
 
@@ -34,10 +34,10 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-black uppercase tracking-wide">
-                Select Active Hospital
+                Select Active Facility
               </h2>
               <p className="text-xs text-blue-100">
-                Cebu Provincial Health Rapid Emergency Alert Network
+                Cebu Provincial Hospitals & Balamban Rescue Network
               </p>
             </div>
           </div>
@@ -53,7 +53,7 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
         {/* Content list */}
         <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
           <p className="text-xs text-slate-500 font-medium">
-            Emergency codes, sirens, voice alerts, and responders will be <strong>100% isolated</strong> to your selected hospital:
+            Emergency codes, sirens, voice alerts, and responders will be <strong>100% isolated</strong> to your selected hospital / agency:
           </p>
 
           <div className="space-y-2.5">
@@ -70,7 +70,9 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
                   }}
                   className={`w-full p-4 rounded-2xl border-2 text-left transition flex items-center justify-between ${
                     isSelected
-                      ? 'border-blue-600 bg-blue-50/80 shadow-md ring-4 ring-blue-500/20'
+                      ? hosp.isRescue
+                        ? 'border-red-600 bg-red-50/80 shadow-md ring-4 ring-red-500/20'
+                        : 'border-blue-600 bg-blue-50/80 shadow-md ring-4 ring-blue-500/20'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
                   }`}
                 >
@@ -79,7 +81,7 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
                       className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs text-white shrink-0 shadow-sm"
                       style={{ backgroundColor: hosp.colorHex }}
                     >
-                      {hosp.code.slice(0, 3)}
+                      {hosp.isRescue ? <Ambulance className="h-5 w-5" /> : hosp.code.slice(0, 3)}
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">
@@ -87,7 +89,9 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
                           {hosp.name}
                         </span>
                         {isSelected && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-600 text-white">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-white ${
+                            hosp.isRescue ? 'bg-red-600' : 'bg-blue-600'
+                          }`}>
                             ACTIVE
                           </span>
                         )}
@@ -97,13 +101,13 @@ export const HospitalSwitchModal: React.FC<HospitalSwitchModalProps> = ({
                         {hosp.municipality} • {hosp.classification}
                       </p>
                       <span className="text-[10px] text-slate-400 font-bold block mt-1">
-                        Capacity: {hosp.bedCapacity} Monitored Beds
+                        {hosp.isRescue ? 'Coverage: 28 Monitored Barangays & Highway' : `Capacity: ${hosp.bedCapacity} Monitored Beds`}
                       </span>
                     </div>
                   </div>
 
                   {isSelected && (
-                    <div className="p-1.5 rounded-full bg-blue-600 text-white shrink-0">
+                    <div className={`p-1.5 rounded-full text-white shrink-0 ${hosp.isRescue ? 'bg-red-600' : 'bg-blue-600'}`}>
                       <Check className="h-4 w-4" />
                     </div>
                   )}

@@ -21,6 +21,13 @@ class AudioEngine {
     }
   }
 
+  public unlockAudio() {
+    this.initContext();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
+    }
+  }
+
   // Mobile Device Haptic Vibration
   public startMobileVibration() {
     if (typeof window === 'undefined' || !navigator.vibrate) return;

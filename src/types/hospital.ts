@@ -1,5 +1,5 @@
 export interface HospitalInfo {
-  id: string; // e.g. 'cphb', 'cphd', 'cphc', 'cphbogo'
+  id: string; // e.g. 'cphb', 'cphd', 'cphc', 'cphbogo', 'balamban_rescue'
   name: string; // e.g. 'Cebu Provincial Hospital - Balamban'
   shortName: string; // e.g. 'CPH Balamban'
   code: string; // 'CPHB'
@@ -9,6 +9,7 @@ export interface HospitalInfo {
   colorHex: string;
   badgeBg: string;
   badgeText: string;
+  isRescue?: boolean;
 }
 
 export const CEBU_PROVINCIAL_HOSPITALS: HospitalInfo[] = [
@@ -23,6 +24,19 @@ export const CEBU_PROVINCIAL_HOSPITALS: HospitalInfo[] = [
     colorHex: '#2563eb',
     badgeBg: 'bg-blue-100',
     badgeText: 'text-blue-800 border-blue-300',
+  },
+  {
+    id: 'balamban_rescue',
+    name: 'MDRRMO Balamban Rescue 911',
+    shortName: 'Balamban Rescue',
+    code: 'RESCUE',
+    municipality: 'Balamban, Cebu (Municipal EOC)',
+    classification: 'Municipal Emergency Operations & 28 Barangays Network',
+    bedCapacity: 28,
+    colorHex: '#dc2626',
+    badgeBg: 'bg-red-100',
+    badgeText: 'text-red-800 border-red-300',
+    isRescue: true,
   },
   {
     id: 'cphd',
