@@ -32,9 +32,10 @@ import { audioController } from '@/lib/audioController';
 
 export default function MonitorPage() {
   const [activeHospital, setActiveHospital] = useState(HospitalService.getActiveHospital());
+  const isRescueInit = activeHospital.isRescue || activeHospital.id === 'balamban_rescue';
   const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
   const [communityAlerts, setCommunityAlerts] = useState<CommunityEmergencyAlert[]>([]);
-  const [monitorMode, setMonitorMode] = useState<'HOSPITAL' | 'RESCUE' | 'UNIFIED'>('HOSPITAL');
+  const [monitorMode, setMonitorMode] = useState<'HOSPITAL' | 'RESCUE' | 'UNIFIED'>(isRescueInit ? 'RESCUE' : 'HOSPITAL');
   const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
@@ -126,10 +127,13 @@ export default function MonitorPage() {
       (navigator as any).wakeLock.request('screen').catch(() => {});
     }
 
-    // Auto-select RESCUE mode if facility is Balamban Rescue
-    if (activeHospital.isRescue || activeHospital.id === 'balamban_rescue') {
-      setMonitorMode('RESCUE');
-    }
+    const currHosp = HospitalService.getActiveHospital();
+    setActiveHospital(currHosp);
+    const isRes = currHosp.isRescue || currHosp.id === 'balamban_rescue';
+    setMonitorMode(isRes ? 'RESCUE' : 'HOSPITAL');
+
+    // Auto unlock audio on mount
+    audioController.unlockAudio();
 
     const currentStaff = StaffService.getCurrentStaff();
     if (currentStaff) {
@@ -142,11 +146,11 @@ export default function MonitorPage() {
     const handleHospChange = (e: any) => {
       if (e.detail) {
         setActiveHospital(e.detail);
-        if (e.detail.isRescue || e.detail.id === 'balamban_rescue') {
-          setMonitorMode('RESCUE');
-        }
+        const rescueActive = e.detail.isRescue || e.detail.id === 'balamban_rescue';
+        setMonitorMode(rescueActive ? 'RESCUE' : 'HOSPITAL');
         lastAlertsHashRef.current = '';
         lastRescueHashRef.current = '';
+        audioController.stopAllImmediate();
       }
     };
     window.addEventListener('cph_hospital_changed', handleHospChange);
@@ -157,6 +161,10 @@ export default function MonitorPage() {
 
     const unsubscribeRescue = RescueService.subscribe((updated) => {
       setCommunityAlerts(updated);
+      const active = updated.filter(c => c.status !== 'RESOLVED');
+      if (monitorMode === 'RESCUE' && active.length > 0) {
+        audioController.syncCommunityAlerts(active);
+      }
     });
 
     const pollInterval = setInterval(() => {
@@ -171,7 +179,7 @@ export default function MonitorPage() {
       window.removeEventListener('cph_hospital_changed', handleHospChange);
       audioController.stopAllImmediate();
     };
-  }, [activeHospital.id]);
+  }, []);
 
   // Elapsed time counters for all active alerts
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Ambulance, 
@@ -24,7 +24,8 @@ import {
   RefreshCw,
   Tv,
   ArrowLeft,
-  ChevronRight
+  ChevronRight,
+  Home
 } from 'lucide-react';
 import { 
   CommunityEmergencyAlert, 
@@ -33,24 +34,42 @@ import {
 } from '@/types/rescue';
 import { RescueService } from '@/lib/rescueService';
 import { audioEngine } from '@/lib/audioEngine';
+import { audioController } from '@/lib/audioController';
 
 export default function BalambanRescueMonitorPage() {
   const [alerts, setAlerts] = useState<CommunityEmergencyAlert[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [currentTime, setCurrentTime] = useState('');
+  const lastRescueHashRef = useRef<string>('');
+
+  const syncRescueAudio = (list: CommunityEmergencyAlert[]) => {
+    const active = list.filter(a => a.status !== 'RESOLVED');
+    const hash = active.map(a => `${a.id}_${a.status}`).sort().join(',');
+    if (hash !== lastRescueHashRef.current) {
+      lastRescueHashRef.current = hash;
+      if (active.length > 0 && soundEnabled) {
+        audioController.syncCommunityAlerts(active);
+      } else {
+        audioController.stopAllImmediate();
+      }
+    }
+  };
 
   const loadAlerts = () => {
-    setAlerts(RescueService.getCommunityAlerts());
+    const list = RescueService.getCommunityAlerts();
+    setAlerts(list);
+    syncRescueAudio(list);
   };
 
   useEffect(() => {
-    loadAlerts();
-
     // Keep screen awake for 24/7 Smart TV kiosk
     if ('wakeLock' in navigator) {
       (navigator as any).wakeLock.request('screen').catch(() => {});
     }
+
+    audioController.unlockAudio();
+    loadAlerts();
 
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
@@ -58,10 +77,7 @@ export default function BalambanRescueMonitorPage() {
 
     const unsubscribe = RescueService.subscribe((updated) => {
       setAlerts(updated);
-      const active = updated.filter(a => a.status !== 'RESOLVED');
-      if (active.length > 0 && soundEnabled) {
-        audioEngine.playChime();
-      }
+      syncRescueAudio(updated);
     });
 
     const poll = setInterval(loadAlerts, 2500);
@@ -70,6 +86,7 @@ export default function BalambanRescueMonitorPage() {
       clearInterval(timer);
       clearInterval(poll);
       unsubscribe();
+      audioController.stopAllImmediate();
     };
   }, [soundEnabled]);
 
@@ -110,7 +127,7 @@ export default function BalambanRescueMonitorPage() {
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-base sm:text-lg font-black tracking-tight uppercase text-white">
-                MDRRMO Balamban Rescue 911 • TV Command Monitor
+                MDRRMO Balamban Rescue 911 • TV Command Screen
               </h1>
               <span className="bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center">
                 <Radio className="h-3 w-3 mr-1 inline animate-ping" />
@@ -130,7 +147,17 @@ export default function BalambanRescueMonitorPage() {
           </div>
 
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={() => {
+              if (soundEnabled) {
+                audioController.stopAllImmediate();
+                setSoundEnabled(false);
+              } else {
+                setSoundEnabled(true);
+                audioController.unlockAudio();
+                lastRescueHashRef.current = '';
+                syncRescueAudio(alerts);
+              }
+            }}
             className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center space-x-1.5 transition ${
               soundEnabled
                 ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
@@ -150,11 +177,11 @@ export default function BalambanRescueMonitorPage() {
           </button>
 
           <Link
-            href="/monitor"
-            className="px-3 py-1.5 rounded-xl bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold border border-blue-400/30 transition flex items-center space-x-1"
+            href="/"
+            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/15 transition flex items-center space-x-1.5"
           >
-            <Tv className="h-3.5 w-3.5" />
-            <span>Hospital TV</span>
+            <Home className="h-3.5 w-3.5" />
+            <span>EOC Dashboard</span>
           </Link>
         </div>
       </div>
@@ -180,10 +207,10 @@ export default function BalambanRescueMonitorPage() {
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-white/20 text-white">
-                          {def.badge}
+                        <span className={`px-3 py-0.5 rounded-md text-xs font-black uppercase text-white ${def.color}`}>
+                          {def.title}
                         </span>
-                        <span className="text-xs font-black uppercase tracking-wider px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 animate-pulse">
+                        <span className="px-2.5 py-0.5 rounded-md text-xs font-black uppercase bg-amber-400 text-slate-950">
                           STATUS: {alert.status.replace(/_/g, ' ')}
                         </span>
                       </div>
@@ -193,88 +220,91 @@ export default function BalambanRescueMonitorPage() {
                     </div>
                   </div>
 
-                  <div className="text-right text-xs text-white/70">
-                    <Clock className="h-4 w-4 inline mr-1 text-amber-300" />
-                    <span>Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div className="text-right">
+                    <span className="text-xs text-white/50 font-mono block">
+                      Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
                 </div>
 
-                {/* Location & Patient Info */}
+                {/* Location & Caller Information */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10">
-                    <span className="text-white/60 font-semibold block text-xs uppercase">Sitio / Specific Location:</span>
-                    <p className="font-black text-amber-300 text-base mt-1 flex items-center">
-                      <MapPin className="h-4 w-4 text-red-400 mr-1.5 shrink-0" />
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                    <span className="text-xs font-bold text-white/60 uppercase flex items-center">
+                      <MapPin className="h-3.5 w-3.5 mr-1 text-red-400" />
+                      Sitio / Specific Location:
+                    </span>
+                    <span className="text-base font-black text-amber-300 block">
                       {alert.sitio_or_landmark}
-                    </p>
+                    </span>
                   </div>
 
-                  <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10">
-                    <span className="text-white/60 font-semibold block text-xs uppercase">Caller / Contact Person:</span>
-                    <p className="font-bold text-white text-base mt-1">
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                    <span className="text-xs font-bold text-white/60 uppercase flex items-center">
+                      <PhoneCall className="h-3.5 w-3.5 mr-1 text-blue-400" />
+                      Caller / Contact Person:
+                    </span>
+                    <span className="text-base font-black text-white block">
                       {alert.caller_name} ({alert.caller_phone})
-                    </p>
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-black/50 border border-white/10 text-sm">
-                  <span className="text-white/60 font-semibold block text-xs uppercase">Emergency Condition:</span>
-                  <p className="text-white font-bold mt-1 text-base leading-relaxed">
+                {/* Patient Emergency Condition */}
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/30 space-y-1">
+                  <span className="text-xs font-bold text-red-300 uppercase">Emergency Condition:</span>
+                  <p className="text-sm sm:text-base font-bold text-white leading-relaxed">
                     {alert.patient_condition}
                   </p>
                 </div>
 
-                {/* Dispatched Units */}
+                {/* Responding Units & PTVs */}
                 <div className="space-y-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-white/60 block">
+                  <span className="text-xs font-black uppercase text-white/60 tracking-wider block">
                     Dispatched Responders & Transport Units:
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {alert.responding_units.map((unit) => (
-                      <div key={unit.unit_id} className="p-3 rounded-2xl bg-white/5 border border-white/15 flex items-center justify-between text-sm">
-                        <div>
-                          <span className="font-black text-blue-300 text-sm block">{unit.unit_name}</span>
-                          <span className="text-xs text-white/80">{unit.driver_or_lead}</span>
+                      <div 
+                        key={unit.unit_id} 
+                        className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Car className="h-4 w-4 text-amber-400" />
+                          <div>
+                            <span className="text-xs font-extrabold text-white block">{unit.unit_name}</span>
+                            <span className="text-[10px] text-white/60">{unit.driver_or_lead}</span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            ETA ~{unit.eta_mins}m
-                          </span>
-                        </div>
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">
+                          ETA ~{unit.eta_mins}m
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Hospital Pre-Arrival Banner */}
-                <div className="p-3.5 rounded-2xl bg-blue-950/90 border border-blue-500/40 flex items-center justify-between text-sm text-blue-200">
-                  <div className="flex items-center space-x-2.5">
-                    <Building2 className="h-5 w-5 text-blue-400 shrink-0" />
+                {/* Target Destination & Action Bar */}
+                <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2 text-xs text-blue-300">
+                    <Building2 className="h-4 w-4 text-blue-400" />
                     <span>Destination Facility: <strong>{alert.destination_facility}</strong></span>
+                    <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-black uppercase">
+                      Trauma Bay Prepped
+                    </span>
                   </div>
-                  <span className="text-xs font-black text-amber-300 bg-amber-950 px-2.5 py-1 rounded-lg border border-amber-500/40">
-                    TRAUMA BAY PREPPED
-                  </span>
-                </div>
-
-                {/* Quick Status Advance Button */}
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-                  <span className="text-xs text-white/60">
-                    Status: <strong className="text-white font-mono">{alert.status}</strong>
-                  </span>
 
                   <button
                     onClick={() => handleAdvanceStatus(alert.id, alert.status)}
-                    className="py-2.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition flex items-center space-x-2 shadow-lg"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <span>
-                      {alert.status === 'DISPATCHED' && 'Mark En Route 🚑'}
-                      {alert.status === 'EN_ROUTE' && 'Mark On Scene 📍'}
-                      {alert.status === 'ON_SCENE' && 'Transporting to CPHB 🏥'}
-                      {alert.status === 'TRANSPORTING_TO_CPHB' && 'Arrived at CPHB ER 🏁'}
-                      {alert.status === 'ARRIVED_AT_CPHB' && 'Clear & Resolve ✓'}
+                      {alert.status === 'DISPATCHED' && 'Mark En Route ❯'}
+                      {alert.status === 'EN_ROUTE' && 'Mark On Scene ❯'}
+                      {alert.status === 'ON_SCENE' && 'Transporting to CPHB ❯'}
+                      {alert.status === 'TRANSPORTING_TO_CPHB' && 'Arrived at CPHB ER ❯'}
+                      {alert.status === 'ARRIVED_AT_CPHB' && 'Resolve & Clear Incident ✓'}
                     </span>
-                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
 
@@ -283,21 +313,40 @@ export default function BalambanRescueMonitorPage() {
           })}
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-slate-900/60 rounded-3xl border border-white/10 my-4 space-y-3">
-          <div className="p-4 rounded-3xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 className="h-12 w-12" />
+        /* Standby Screen when 0 Active Emergencies */
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-5 rounded-3xl border border-white/10 bg-slate-900/40">
+          <div className="p-6 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 text-emerald-400 animate-pulse">
+            <CheckCircle2 className="h-16 w-16" />
           </div>
-          <h2 className="text-2xl font-black text-white">MDRRMO BALAMBAN RESCUE STANDBY</h2>
-          <p className="text-sm text-white/60 max-w-md">
-            All 28 Barangays and Transcentral Highway patrol stations are clear. System listening 24/7 for community emergency dispatches.
-          </p>
+          <div>
+            <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
+              All 28 Barangays Normal • System Standby
+            </h2>
+            <p className="text-sm sm:text-base text-white/60 max-w-xl mx-auto mt-2 font-medium">
+              No active rescue, highway trauma, or emergency dispatches in Balamban municipality. 
+              Listening to 24/7 MDRRMO Radio and Barangay hotline alerts.
+            </p>
+          </div>
+          <div className="flex items-center space-x-3 text-xs font-mono text-white/40 pt-2">
+            <span>● 28 Barangay PTVs Ready</span>
+            <span>● MDRRMO Alpha & Delta Standby</span>
+            <span>● CPHB ER Direct Link Active</span>
+          </div>
         </div>
       )}
 
-      {/* Footer System Status */}
-      <div className="flex flex-wrap items-center justify-between text-xs text-white/50 border-t border-white/10 pt-3">
-        <span>Municipality of Balamban Emergency Operations Center</span>
-        <span>Connected to CPH Balamban Trauma Emergency Network</span>
+      {/* TV Screen Footer Bar */}
+      <div className="p-3 rounded-2xl bg-black/60 border border-white/10 flex flex-wrap items-center justify-between text-xs text-white/50 px-5">
+        <div className="flex items-center space-x-4">
+          <span className="flex items-center">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping mr-2" />
+            24/7 Smart TV Broadcast Link Active
+          </span>
+          <span className="hidden md:inline">Covering: Aliwanay, Arpili, Buanoy, Gaas, Pondol, Poblacion & 22 more</span>
+        </div>
+        <div className="font-mono text-[11px] text-amber-400">
+          MDRRMO Emergency Hotline: (032) 333-2199 / 911
+        </div>
       </div>
 
     </div>
