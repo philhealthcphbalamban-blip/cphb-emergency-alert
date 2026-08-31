@@ -43,7 +43,41 @@ export default function BalambanRescueMonitorPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [currentTime, setCurrentTime] = useState('');
+  const [elapsedTimes, setElapsedTimes] = useState<Record<string, number>>({});
   const lastRescueHashRef = useRef<string>('');
+
+  useEffect(() => {
+    const updateElapsed = () => {
+      const now = Date.now();
+      const map: Record<string, number> = {};
+      alerts.forEach((a) => {
+        const start = new Date(a.dispatched_at).getTime();
+        if (!isNaN(start) && start > 0) {
+          map[a.id] = Math.max(0, Math.floor((now - start) / 1000));
+        } else {
+          map[a.id] = 0;
+        }
+      });
+      setElapsedTimes(map);
+    };
+
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [alerts]);
+
+  const formatElapsed = (sec: number | undefined) => {
+    if (sec === undefined || isNaN(sec) || sec < 0) return '00:00';
+    if (sec >= 3600) {
+      const hrs = Math.floor(sec / 3600);
+      const mins = Math.floor((sec % 3600) / 60);
+      const remainingSec = sec % 60;
+      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${remainingSec.toString().padStart(2, '0')}`;
+    }
+    const mins = Math.floor(sec / 60);
+    const remainingSec = sec % 60;
+    return `${mins.toString().padStart(2, '0')}:${remainingSec.toString().padStart(2, '0')}`;
+  };
 
   const syncRescueAudio = (list: CommunityEmergencyAlert[]) => {
     const active = list.filter(a => a.status !== 'RESOLVED');
@@ -262,8 +296,13 @@ export default function BalambanRescueMonitorPage() {
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-xs text-white/50 font-mono block">
+                    <div className="flex flex-col items-end space-y-1.5 shrink-0">
+                      <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-black/50 border border-white/20 font-mono text-xs font-black text-amber-300 shadow-sm">
+                        <Clock className="h-3.5 w-3.5 text-amber-300 animate-spin" />
+                        <span>Elapsed:</span>
+                        <span className="text-sm font-black text-white">{formatElapsed(elapsedTimes[alert.id])}</span>
+                      </div>
+                      <span className="text-[11px] text-white/50 font-mono block">
                         Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
