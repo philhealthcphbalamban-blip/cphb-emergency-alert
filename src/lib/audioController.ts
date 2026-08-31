@@ -140,10 +140,15 @@ export class AudioController {
 
     let announcement = '';
     if (active.length === 1) {
-      announcement = `Attention Balamban Rescue. ${def.title} in Barangay ${first.barangay_name}, ${first.sitio_or_landmark}. Responders please proceed immediately.`;
+      const typeText = first.emergency_type === 'CODE_MATERNAL' 
+        ? 'Code Maternal! Maternal OB Emergency' 
+        : first.emergency_type === 'CODE_TRAUMA' 
+        ? 'Code Trauma! Vehicular Highway Trauma' 
+        : def.title;
+      announcement = `Attention Balamban Rescue! Attention Balamban Rescue! ${typeText} in Barangay ${first.barangay_name}, ${first.sitio_or_landmark}. All responding units and PTV proceed immediately.`;
     } else {
-      const parts = active.map(a => `${a.emergency_type} at Barangay ${a.barangay_name}`);
-      announcement = `Attention Balamban Rescue: Multiple active community emergency incidents. ${parts.join('. Also active: ')}.`;
+      const parts = active.map(a => `${a.emergency_type === 'CODE_MATERNAL' ? 'Code Maternal' : 'Code Trauma'} in Barangay ${a.barangay_name}`);
+      announcement = `Attention Balamban Rescue! Attention Balamban Rescue! Multiple active emergency incidents dispatched. ${parts.join('. Also active: ')}. All units coordinate immediately.`;
     }
 
     const pattern: SirenPattern = (first.emergency_type === 'CODE_TRAUMA' || first.emergency_type === 'CODE_RESCUE') ? 'wail' : 'hi_lo';

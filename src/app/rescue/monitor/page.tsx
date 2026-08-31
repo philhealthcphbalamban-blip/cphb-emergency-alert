@@ -192,44 +192,82 @@ export default function BalambanRescueMonitorPage() {
 
       {/* Main Screen Content */}
       {activeAlerts.length > 0 ? (
-        <div className={`grid gap-4 flex-1 my-2 ${
-          activeAlerts.length === 1 ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
-        }`}>
-          {activeAlerts.map((alert) => {
-            const def = COMMUNITY_EMERGENCY_DEFS[alert.emergency_type] || COMMUNITY_EMERGENCY_DEFS.CODE_TRAUMA;
-            return (
-              <div 
-                key={alert.id}
-                className="bg-slate-900/90 rounded-3xl border-2 border-red-500 p-6 shadow-2xl flex flex-col justify-between space-y-4 animate-fade-in"
-              >
-                
-                {/* Alert Header */}
-                <div className="flex items-start justify-between border-b border-white/10 pb-4">
-                  <div className="flex items-center space-x-3.5">
-                    <div className={`p-3.5 rounded-2xl ${def.accentBg} text-white shadow-lg animate-pulse`}>
-                      <Ambulance className="h-8 w-8" />
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-3 py-0.5 rounded-md text-xs font-black uppercase text-white ${def.color}`}>
-                          {def.title}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-md text-xs font-black uppercase bg-amber-400 text-slate-950">
-                          STATUS: {alert.status.replace(/_/g, ' ')}
-                        </span>
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">
-                        Brgy. {alert.barangay_name}
-                      </h2>
-                    </div>
-                  </div>
+        <div className="space-y-4 flex-1 my-2">
+          {/* Attention Banner for Multiple Incidents */}
+          {activeAlerts.length > 1 && (
+            <div className="p-3.5 bg-gradient-to-r from-red-700 via-rose-800 to-red-700 text-white rounded-2xl flex flex-wrap items-center justify-between font-black text-xs uppercase tracking-wider shadow-2xl gap-3 border-2 border-red-400 animate-pulse">
+              <span className="flex items-center space-x-2">
+                <Radio className="h-5 w-5 text-amber-300 animate-ping mr-1" />
+                <span className="text-sm">🚨 ATTENTION BALAMBAN RESCUE: {activeAlerts.length} CONCURRENT EMERGENCY INCIDENTS DISPATCHED</span>
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={async () => {
+                    audioController.stopAllImmediate();
+                    for (const a of activeAlerts) {
+                      await RescueService.updateAlertStatus(a.id, 'RESOLVED', 'Batch cleared via Rescue TV Monitor');
+                    }
+                    loadAlerts();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-emerald-950" />
+                  <span>Clear All ({activeAlerts.length}) Dispatches ✓</span>
+                </button>
+                <span className="text-[11px] bg-black/50 px-3 py-2 rounded-xl border border-white/20 hidden sm:inline">
+                  Split Screen Multi-Dispatch
+                </span>
+              </div>
+            </div>
+          )}
 
-                  <div className="text-right">
-                    <span className="text-xs text-white/50 font-mono block">
-                      Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+          <div className={`grid gap-4 ${
+            activeAlerts.length === 1 ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
+          }`}>
+            {activeAlerts.map((alert, idx) => {
+              const def = COMMUNITY_EMERGENCY_DEFS[alert.emergency_type] || COMMUNITY_EMERGENCY_DEFS.CODE_TRAUMA;
+              const isMaternal = alert.emergency_type === 'CODE_MATERNAL';
+              const isTrauma = alert.emergency_type === 'CODE_TRAUMA';
+
+              return (
+                <div 
+                  key={alert.id}
+                  className={`bg-slate-900/95 rounded-3xl border-4 p-6 shadow-2xl flex flex-col justify-between space-y-4 animate-fade-in ${
+                    isMaternal ? 'border-pink-500 shadow-pink-950/50' : 'border-red-500 shadow-red-950/50'
+                  }`}
+                >
+                  
+                  {/* Alert Header */}
+                  <div className="flex items-start justify-between border-b border-white/10 pb-4">
+                    <div className="flex items-center space-x-3.5">
+                      <div className={`p-3.5 rounded-2xl ${def.accentBg} text-white shadow-lg animate-pulse`}>
+                        <Ambulance className="h-8 w-8" />
+                      </div>
+                      <div>
+                        <div className="inline-flex items-center space-x-1.5 bg-red-600/30 border border-red-500/50 px-2.5 py-0.5 rounded text-[10px] font-black uppercase text-amber-300 mb-1">
+                          <Radio className="h-2.5 w-2.5 animate-ping text-amber-300 mr-0.5" />
+                          <span>ATTENTION BALAMBAN RESCUE {activeAlerts.length > 1 ? `• INCIDENT #${idx + 1}` : ''}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span className={`px-3 py-0.5 rounded-md text-xs font-black uppercase text-white ${def.color}`}>
+                            {isMaternal ? '🤰 CODE MATERNAL / OB EMERGENCY' : isTrauma ? '🚗 CODE TRAUMA / MVA HIGHWAY' : def.title}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md text-xs font-black uppercase bg-amber-400 text-slate-950">
+                            STATUS: {alert.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">
+                          Brgy. {alert.barangay_name}
+                        </h2>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs text-white/50 font-mono block">
+                        Dispatched: {new Date(alert.dispatched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
                 {/* Location & Caller Information */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
@@ -329,6 +367,7 @@ export default function BalambanRescueMonitorPage() {
               </div>
             );
           })}
+          </div>
         </div>
       ) : (
         /* Standby Screen when 0 Active Emergencies */
