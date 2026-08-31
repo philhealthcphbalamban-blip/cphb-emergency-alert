@@ -555,14 +555,23 @@ export default function CommandHubPage() {
         {activeAlerts.length > 0 ? (
           <div className="space-y-3">
             {activeAlerts.length > 1 && (
-              <div className="p-2.5 bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-between shadow-sm">
+              <div className="p-3 bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex flex-wrap items-center justify-between shadow-md gap-2">
                 <span className="flex items-center space-x-1.5">
                   <Layers className="h-4 w-4 animate-bounce" />
                   <span>{activeAlerts.length} CONCURRENT EMERGENCY CODES IN PROGRESS</span>
                 </span>
-                <Link href="/monitor" className="underline text-red-100 hover:text-white">
-                  Open Split-Screen Monitor ➔
-                </Link>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleResolveAlert('any')}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-sm transition flex items-center space-x-1 cursor-pointer"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Clear All ({activeAlerts.length}) Active Codes ✓</span>
+                  </button>
+                  <Link href="/monitor" className="underline text-red-100 hover:text-white text-xs">
+                    Open Monitor ➔
+                  </Link>
+                </div>
               </div>
             )}
 

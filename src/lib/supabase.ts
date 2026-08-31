@@ -483,15 +483,22 @@ export class EmergencyService {
 
     if (supabase) {
       try {
-        await supabase
+        let query = supabase
           .from('emergency_alerts')
           .update({
             status: params.status,
             resolved_at: new Date().toISOString(),
             resolved_by_name: params.resolved_by_name,
             resolution_notes: params.resolution_notes,
-          })
-          .eq('id', params.alert_id);
+          });
+
+        if (params.alert_id && params.alert_id !== 'any') {
+          query = query.eq('id', params.alert_id);
+        } else {
+          query = query.in('status', ['ACTIVE', 'RESPONDING']);
+        }
+
+        await query;
       } catch (e) {
         console.error('Failed resolving in Supabase direct:', e);
       }

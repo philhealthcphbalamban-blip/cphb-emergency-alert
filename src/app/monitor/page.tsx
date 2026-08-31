@@ -701,12 +701,30 @@ export default function MonitorPage() {
         ) : (
           /* MULTI-CODE SPLIT SCREEN GRID (2 OR MORE ACTIVE CODES) */
           <div className="space-y-4 animate-fade-in">
-            <div className="p-3 bg-red-600 text-white rounded-2xl flex items-center justify-between font-black text-xs uppercase tracking-wider shadow-md">
+            <div className="p-3 bg-red-600 text-white rounded-2xl flex flex-wrap items-center justify-between font-black text-xs uppercase tracking-wider shadow-md gap-2">
               <span className="flex items-center space-x-2">
                 <ShieldAlert className="h-4 w-4 animate-bounce" />
                 <span>MULTIPLE CONCURRENT EMERGENCY CODES IN PROGRESS ({activeAlerts.length} ACTIVE)</span>
               </span>
-              <span className="text-[11px] bg-red-800 px-3 py-1 rounded-lg">Split Screen Dispatch Mode</span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={async () => {
+                    audioController.stopAllImmediate();
+                    await EmergencyService.resolveAlert({
+                      alert_id: 'any',
+                      resolved_by_name: 'Dr. Nigel Pasco / Hospital Administrator',
+                      resolution_notes: 'Batch resolved all active codes via Central Monitor Kiosk.',
+                      status: 'RESOLVED',
+                    });
+                    fetchActiveAlerts();
+                  }}
+                  className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-emerald-950" />
+                  <span>Clear All ({activeAlerts.length}) Codes ✓</span>
+                </button>
+                <span className="text-[11px] bg-red-800 px-3 py-1.5 rounded-lg hidden sm:inline">Split Screen Dispatch Mode</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
