@@ -19,10 +19,13 @@ import {
   Eye,
   Filter,
   Check,
-  Building2
+  Building2,
+  Ambulance,
+  KeyRound
 } from 'lucide-react';
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, AdminAuthService, DEFAULT_CPHB_STAFF } from '@/lib/staffService';
+import { BALAMBAN_BARANGAYS } from '@/types/rescue';
 import * as XLSX from 'xlsx';
 
 export default function AdminUsersPage() {
@@ -34,6 +37,7 @@ export default function AdminUsersPage() {
   const [staffList, setStaffList] = useState<HospitalStaff[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
+  const [selectedFacility, setSelectedFacility] = useState<string>('ALL');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   
@@ -56,6 +60,9 @@ export default function AdminUsersPage() {
   const [formSpecialization, setFormSpecialization] = useState('');
   const [formContact, setFormContact] = useState('');
   const [formColor, setFormColor] = useState('#2563eb');
+  const [formHospitalId, setFormHospitalId] = useState<string>('cphb');
+  const [formPinCode, setFormPinCode] = useState<string>('');
+  const [formAssignedBarangay, setFormAssignedBarangay] = useState<string>('');
 
   // Change PIN State
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -201,6 +208,9 @@ export default function AdminUsersPage() {
     setFormSpecialization('');
     setFormContact('Loc 101');
     setFormColor('#2563eb');
+    setFormHospitalId('cphb');
+    setFormPinCode('');
+    setFormAssignedBarangay('');
     setIsFormOpen(true);
   };
 
@@ -219,6 +229,9 @@ export default function AdminUsersPage() {
     setFormSpecialization(staff.specialization || '');
     setFormContact(staff.contact_no || '');
     setFormColor(staff.color_hex);
+    setFormHospitalId(staff.hospital_id || (staff.is_rescue ? 'balamban_rescue' : 'cphb'));
+    setFormPinCode(staff.pin_code || '');
+    setFormAssignedBarangay(staff.assigned_barangay || '');
     setIsFormOpen(true);
   };
 
@@ -415,45 +428,56 @@ export default function AdminUsersPage() {
       .join('')
       .toUpperCase() || 'ST';
 
+    const isRescueFacility = formHospitalId === 'balamban_rescue';
+
     const payload: HospitalStaff = {
       id: editingId || `staff-${Date.now()}`,
+      hospital_id: formHospitalId,
       name: formName,
       role: formRole,
       department: formDept,
       employee_id: formEmpId,
+      pin_code: formPinCode.trim() || undefined,
       prc_license_no: formPrcNo || 'N/A',
       accreditation_no: formAccredNo || 'N/A',
       specialization: formSpecialization,
       contact_no: formContact,
+      assigned_barangay: isRescueFacility ? formAssignedBarangay.trim() || undefined : undefined,
       avatar_initials: initials,
-      color_hex: formColor,
+      color_hex: isRescueFacility ? '#dc2626' : formColor,
       is_doctor: isDoc,
+      is_rescue: isRescueFacility,
       is_admin: isAdmin,
       can_trigger_code: true,
       can_respond_code: true,
-      can_resolve_code: isDoc || isAdmin,
+      can_resolve_code: isDoc || isAdmin || isRescueFacility,
     };
 
     StaffService.saveStaffMember(payload);
     setIsFormOpen(false);
   };
 
-  // Filter staff by live search & selected Department
+  // Filter staff by live search, selected Department & Facility
   const filteredStaff = staffList.filter(s => {
     const q = searchQuery.toLowerCase();
     const accred = (s.accreditation_no || '').toLowerCase();
     const prc = (s.prc_license_no || '').toLowerCase();
+    const pin = (s.pin_code || '').toLowerCase();
     const matchesQuery = 
       s.name.toLowerCase().includes(q) ||
       accred.includes(q) ||
       prc.includes(q) ||
+      pin.includes(q) ||
       s.employee_id.toLowerCase().includes(q) ||
       s.department.toLowerCase().includes(q) ||
       s.role.toLowerCase().includes(q);
 
     const matchesDept = selectedDept === 'ALL' || s.department === selectedDept;
 
-    return matchesQuery && matchesDept;
+    const staffHosp = s.hospital_id || (s.is_rescue ? 'balamban_rescue' : 'cphb');
+    const matchesFacility = selectedFacility === 'ALL' || staffHosp === selectedFacility;
+
+    return matchesQuery && matchesDept && matchesFacility;
   });
 
   return (
@@ -598,10 +622,62 @@ export default function AdminUsersPage() {
           )}
         </div>
       </div>
-
-      {/* DEPARTMENT FILTER & SEARCH TOOLBAR (Replaces old rigid Doctors/Nurses buttons) */}
+      {/* FACILITY & DEPARTMENT FILTER & SEARCH TOOLBAR */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
         
+        {/* Facility Filter Pills */}
+        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs font-bold border-b border-slate-100">
+          <button
+            onClick={() => setSelectedFacility('ALL')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition ${
+              selectedFacility === 'ALL' ? 'bg-slate-900 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            All Facilities ({staffList.length})
+          </button>
+          <button
+            onClick={() => setSelectedFacility('cphb')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition ${
+              selectedFacility === 'cphb' ? 'bg-blue-600 text-white font-black shadow-xs' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+            }`}
+          >
+            🏥 CPH Balamban ({staffList.filter(s => (s.hospital_id || 'cphb') === 'cphb' && !s.is_rescue).length})
+          </button>
+          <button
+            onClick={() => setSelectedFacility('balamban_rescue')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition flex items-center space-x-1 ${
+              selectedFacility === 'balamban_rescue' ? 'bg-red-600 text-white font-black shadow-xs' : 'bg-red-50 text-red-800 hover:bg-red-100'
+            }`}
+          >
+            <Ambulance className="h-3.5 w-3.5" />
+            <span>MDRRMO Balamban Rescue 911 ({staffList.filter(s => s.is_rescue || s.hospital_id === 'balamban_rescue').length})</span>
+          </button>
+          <button
+            onClick={() => setSelectedFacility('cphd')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition ${
+              selectedFacility === 'cphd' ? 'bg-emerald-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            🏥 CPH Danao
+          </button>
+          <button
+            onClick={() => setSelectedFacility('cphc')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition ${
+              selectedFacility === 'cphc' ? 'bg-purple-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            🏥 CPH Carcar
+          </button>
+          <button
+            onClick={() => setSelectedFacility('cphbogo')}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition ${
+              selectedFacility === 'cphbogo' ? 'bg-amber-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            🏥 CPH Bogo
+          </button>
+        </div>
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           
           {/* Live Search Input */}
@@ -610,7 +686,7 @@ export default function AdminUsersPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, position, accreditation no., or employee ID..."
+              placeholder="Search by name, PIN code, position, accreditation no., or employee ID..."
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 font-medium"
             />
           </div>
@@ -619,14 +695,14 @@ export default function AdminUsersPage() {
           <div className="flex items-center space-x-2 w-full md:w-auto">
             <div className="flex items-center space-x-1 text-xs font-black text-slate-700 shrink-0">
               <Building2 className="h-4 w-4 text-blue-600" />
-              <span>Department:</span>
+              <span>Section / Station:</span>
             </div>
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
               className="w-full md:w-72 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500"
             >
-              <option value="ALL">All Departments ({staffList.length})</option>
+              <option value="ALL">All Sections / Stations ({staffList.length})</option>
               {departmentsList.map(d => (
                 <option key={d.name} value={d.name}>
                   {d.name} ({d.count})
@@ -647,98 +723,89 @@ export default function AdminUsersPage() {
 
         </div>
 
-        {/* Quick Department Filter Chips */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs font-bold">
-          <button
-            onClick={() => setSelectedDept('ALL')}
-            className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
-              selectedDept === 'ALL' ? 'bg-slate-900 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            All Personnel ({staffList.length})
-          </button>
-          {departmentsList.slice(0, 6).map(d => (
-            <button
-              key={d.name}
-              onClick={() => setSelectedDept(d.name)}
-              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition ${
-                selectedDept === d.name ? 'bg-blue-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {d.name} ({d.count})
-            </button>
-          ))}
-        </div>
-
       </div>
 
       {/* 📱 MOBILE CARD VIEW (Phones) */}
       <div className="block sm:hidden space-y-2.5">
         {filteredStaff.length > 0 ? (
-          filteredStaff.map((staff) => (
-            <div key={staff.id} className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <div 
-                    className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0"
-                    style={{ backgroundColor: staff.color_hex }}
-                  >
-                    {staff.avatar_initials}
+          filteredStaff.map((staff) => {
+            const isStaffRescue = staff.is_rescue || staff.hospital_id === 'balamban_rescue';
+
+            return (
+              <div key={staff.id} className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <div 
+                      className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0"
+                      style={{ backgroundColor: staff.color_hex }}
+                    >
+                      {isStaffRescue ? <Ambulance className="h-5 w-5" /> : staff.avatar_initials}
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs block leading-tight">{staff.name}</span>
+                      <span className="text-[10px] text-blue-700 font-semibold">{staff.department}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs block leading-tight">{staff.name}</span>
-                    <span className="text-[10px] text-blue-700 font-semibold">{staff.department}</span>
-                  </div>
+
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                    staff.is_admin ? 'bg-slate-900 text-white' :
+                    isStaffRescue ? 'bg-red-100 text-red-800 border border-red-200' :
+                    staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                    staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                    'bg-slate-100 text-slate-800 border border-slate-200'
+                  }`}>
+                    {staff.role}
+                  </span>
                 </div>
 
-                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                  staff.is_admin ? 'bg-slate-900 text-white' :
-                  staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                  staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                  'bg-slate-100 text-slate-800 border border-slate-200'
-                }`}>
-                  {staff.role}
-                </span>
-              </div>
+                {/* Facility & PIN Badges */}
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center space-x-1">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                        isStaffRescue ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {isStaffRescue ? '🚑 Balamban Rescue 911' : '🏥 CPH Balamban'}
+                      </span>
+                      {staff.pin_code && (
+                        <span className="font-mono font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[10px]">
+                          PIN: {staff.pin_code}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1">
+                      <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mr-1 text-[10px]">
+                        Accred: {staff.accreditation_no || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Numbers & Badges */}
-              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                <div className="space-y-0.5">
-                  <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mr-1">
-                    Accred: {staff.accreditation_no || 'N/A'}
-                  </span>
-                  {staff.prc_license_no && staff.prc_license_no !== 'N/A' && (
-                    <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
-                      PRC: {staff.prc_license_no}
-                    </span>
+                  {/* Edit & Delete ONLY SHOWN WHEN UNLOCKED */}
+                  {isAuthenticated && (
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      <button
+                        onClick={() => handleEdit(staff)}
+                        className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition"
+                        title="Edit Employee"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(staff.id, staff.name)}
+                        className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700 transition"
+                        title="Delete Employee"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
-
-                {/* Edit & Delete ONLY SHOWN WHEN UNLOCKED */}
-                {isAuthenticated && (
-                  <div className="flex items-center space-x-1.5 shrink-0">
-                    <button
-                      onClick={() => handleEdit(staff)}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition"
-                      title="Edit Employee"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(staff.id, staff.name)}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700 transition"
-                      title="Delete Employee"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
-            Walay employee records nga nakit-an sa napiling Department.
+            Walay records nga nakit-an sa napiling filter.
           </div>
         )}
       </div>
@@ -749,102 +816,120 @@ export default function AdminUsersPage() {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-black uppercase text-[10px] tracking-wider">
-                <th className="py-3 px-4">Employee / Avatar</th>
+                <th className="py-3 px-4">Personnel</th>
                 <th className="py-3 px-3">Name & Title</th>
-                <th className="py-3 px-3">Position / Designation</th>
-                <th className="py-3 px-3">Department / Unit</th>
-                <th className="py-3 px-3">Accreditation / PRC No</th>
-                <th className="py-3 px-3">Employee ID</th>
+                <th className="py-3 px-3">Facility / Agency</th>
+                <th className="py-3 px-3">Position / Role</th>
+                <th className="py-3 px-3">Section / Unit</th>
+                <th className="py-3 px-3">Login PIN</th>
+                <th className="py-3 px-3">Accreditation / ID</th>
                 {isAuthenticated && <th className="py-3 px-3 text-center">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
               {filteredStaff.length > 0 ? (
-                filteredStaff.map((staff) => (
-                  <tr key={staff.id} className="hover:bg-slate-50/60 transition">
-                    
-                    {/* Avatar */}
-                    <td className="py-3 px-4">
-                      <div 
-                        className="h-9 w-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-sm"
-                        style={{ backgroundColor: staff.color_hex }}
-                      >
-                        {staff.avatar_initials}
-                      </div>
-                    </td>
+                filteredStaff.map((staff) => {
+                  const isStaffRescue = staff.is_rescue || staff.hospital_id === 'balamban_rescue';
 
-                    {/* Name & Specialization */}
-                    <td className="py-3 px-3">
-                      <span className="font-extrabold text-slate-900 text-xs block">{staff.name}</span>
-                      {staff.specialization && (
-                        <span className="text-[10px] text-slate-500 font-medium line-clamp-1">{staff.specialization}</span>
-                      )}
-                    </td>
-
-                    {/* Role / Position */}
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                        staff.is_admin ? 'bg-slate-900 text-white' :
-                        staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                        staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                        'bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}>
-                        {staff.role}
-                      </span>
-                    </td>
-
-                    {/* Department */}
-                    <td className="py-3 px-3 text-xs font-semibold text-slate-700">
-                      {staff.department}
-                    </td>
-
-                    {/* Accreditation & PRC No */}
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <div className="space-y-0.5">
-                        <span className="font-mono text-[11px] font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 block">
-                          Accred: {staff.accreditation_no || 'N/A'}
-                        </span>
-                        {staff.prc_license_no && staff.prc_license_no !== 'N/A' && (
-                          <span className="font-mono text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded border border-emerald-200 block">
-                            PRC: {staff.prc_license_no}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Employee ID */}
-                    <td className="py-3 px-3 whitespace-nowrap font-mono text-slate-500 text-xs font-bold">
-                      {staff.employee_id}
-                    </td>
-
-                    {/* Actions: ONLY WHEN UNLOCKED AS ADMIN */}
-                    {isAuthenticated && (
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center space-x-1.5">
-                          <button
-                            onClick={() => handleEdit(staff)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
-                            title="Edit Employee"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(staff.id, staff.name)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
-                            title="Remove Employee"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                  return (
+                    <tr key={staff.id} className="hover:bg-slate-50/60 transition">
+                      
+                      {/* Avatar */}
+                      <td className="py-3 px-4">
+                        <div 
+                          className="h-9 w-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-sm"
+                          style={{ backgroundColor: staff.color_hex }}
+                        >
+                          {isStaffRescue ? <Ambulance className="h-4 w-4" /> : staff.avatar_initials}
                         </div>
                       </td>
-                    )}
 
-                  </tr>
-                ))
+                      {/* Name & Specialization */}
+                      <td className="py-3 px-3">
+                        <span className="font-extrabold text-slate-900 text-xs block">{staff.name}</span>
+                        {staff.specialization && (
+                          <span className="text-[10px] text-slate-500 font-medium line-clamp-1">{staff.specialization}</span>
+                        )}
+                      </td>
+
+                      {/* Facility Badge */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isStaffRescue ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-blue-50 text-blue-900 border border-blue-200'
+                        }`}>
+                          {isStaffRescue ? '🚑 Balamban Rescue' : '🏥 CPH Balamban'}
+                        </span>
+                      </td>
+
+                      {/* Role / Position */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                          staff.is_admin ? 'bg-slate-900 text-white' :
+                          isStaffRescue ? 'bg-red-100 text-red-800 border border-red-200' :
+                          staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                          staff.role.toLowerCase().includes('nurse') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                          'bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}>
+                          {staff.role}
+                        </span>
+                      </td>
+
+                      {/* Department */}
+                      <td className="py-3 px-3 text-xs font-semibold text-slate-700">
+                        {staff.department}
+                      </td>
+
+                      {/* Login PIN */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {staff.pin_code ? (
+                          <span className="font-mono font-black text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[11px]">
+                            PIN: {staff.pin_code}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">No PIN</span>
+                        )}
+                      </td>
+
+                      {/* Accreditation & Employee ID */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <div className="space-y-0.5">
+                          <span className="font-mono text-[11px] font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 block">
+                            Accred: {staff.accreditation_no || 'N/A'}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-500 block">
+                            ID: {staff.employee_id}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions: ONLY WHEN UNLOCKED AS ADMIN */}
+                      {isAuthenticated && (
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              onClick={() => handleEdit(staff)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 transition"
+                              title="Edit Employee"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(staff.id, staff.name)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 transition"
+                              title="Remove Employee"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={isAuthenticated ? 7 : 6} className="py-12 text-center text-slate-400 font-semibold">
-                    Walay employee records nga nakit-an sa napiling Department.
+                  <td colSpan={8} className="py-12 text-center text-slate-400 text-xs font-semibold">
+                    Walay records nga nakit-an sa napiling filter.
                   </td>
                 </tr>
               )}
@@ -1103,6 +1188,36 @@ export default function AdminUsersPage() {
             </div>
 
             <form onSubmit={handleSaveForm} className="p-5 space-y-4 text-xs">
+              {/* Assigned Facility Selector */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <label className="block text-slate-900 font-extrabold text-xs">
+                  Assigned Facility / Operating Agency:
+                </label>
+                <select
+                  value={formHospitalId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormHospitalId(val);
+                    if (val === 'balamban_rescue') {
+                      setFormDept('MDRRMO Balamban Command Center');
+                      setFormRole('MDRRMO 911 Dispatcher');
+                      setFormColor('#dc2626');
+                    } else if (val === 'cphb') {
+                      setFormDept('Medical Section');
+                      setFormRole('MEDICAL SPECIALIST');
+                      setFormColor('#2563eb');
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                >
+                  <option value="cphb">🏥 Cebu Provincial Hospital - Balamban (CPHB Hospital Wards)</option>
+                  <option value="balamban_rescue">🚑 MDRRMO Balamban Rescue 911 (EOC & 28 Barangays)</option>
+                  <option value="cphd">🏥 Cebu Provincial Hospital - Danao (CPHD)</option>
+                  <option value="cphc">🏥 Cebu Provincial Hospital - Carcar (CPHC)</option>
+                  <option value="cphbogo">🏥 Cebu Provincial Hospital - Bogo (CPHBOGO)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Full Name & Title (e.g. MR. ISABELO B. CARATAO IV o MS. JILLIAN ISABEL COMPLETO LAPE):</label>
                 <input
@@ -1117,6 +1232,22 @@ export default function AdminUsersPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 
+                {/* 4-Digit Login PIN Code */}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 flex items-center justify-between">
+                    <span>Quick Login PIN (4–6 Digits):</span>
+                    <span className="text-purple-700 font-mono font-bold text-[10px]">Keypad Access</span>
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    value={formPinCode}
+                    onChange={(e) => setFormPinCode(e.target.value)}
+                    placeholder="e.g. 9110, 9111, 2026, 1234"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
                 {/* Position / Role input with datalist */}
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Position / Designation:</label>
@@ -1126,10 +1257,15 @@ export default function AdminUsersPage() {
                     value={formRole}
                     onChange={(e) => setFormRole(e.target.value)}
                     required
-                    placeholder="e.g. MEDICAL SPECIALIST / SOCIAL WELFARE OFFICER I"
+                    placeholder="e.g. MDRRMO 911 Dispatcher / Staff Nurse"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
                   />
                   <datalist id="role-suggestions">
+                    <option value="MDRRMO 911 Dispatcher" />
+                    <option value="Rescue Team Lead" />
+                    <option value="Ambulance EMT / Driver" />
+                    <option value="Barangay PTV Driver" />
+                    <option value="Barangay Health Worker (BHW)" />
                     <option value="MEDICAL SPECIALIST" />
                     <option value="MEDICAL OFFICER III" />
                     <option value="MEDICAL OFFICER IV" />
@@ -1145,29 +1281,28 @@ export default function AdminUsersPage() {
                     <option value="PHARMACIST I" />
                     <option value="SOCIAL WELFARE OFFICER I" />
                     <option value="ADMINISTRATIVE OFFICER" />
-                    <option value="ADMINISTRATIVE AIDE" />
-                    <option value="LAB AIDE" />
-                    <option value="CLERK" />
                     <option value="Hospital Administrator" />
                   </datalist>
                 </div>
 
                 {/* Ward / Department input with datalist */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Department / Unit / Ward:</label>
+                  <label className="block text-slate-700 font-bold mb-1">Department / Unit / Station:</label>
                   <input
                     type="text"
                     list="dept-suggestions"
                     value={formDept}
                     onChange={(e) => setFormDept(e.target.value)}
                     required
-                    placeholder="e.g. Medical Social Service Unit / Medical Section"
+                    placeholder="e.g. MDRRMO Balamban Command Center / Medical Section"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
                   />
                   <datalist id="dept-suggestions">
+                    <option value="MDRRMO Balamban Command Center" />
+                    <option value="Balamban Rescue 911 Station" />
+                    <option value="Barangay Emergency Response (BERT)" />
                     <option value="Medical Section" />
                     <option value="Medical Social Service Unit" />
-                    <option value="Admin and Info Unit" />
                     <option value="Emergency Department (ER)" />
                     <option value="ICU NEW ROOM" />
                     <option value="MEDICAL WARD (WARD 4)" />
@@ -1178,44 +1313,58 @@ export default function AdminUsersPage() {
                     <option value="Outpatient Clinic (OPD)" />
                     <option value="Pharmacy" />
                     <option value="Laboratory" />
-                    <option value="Billing / Claims Section" />
-                    <option value="Cashier Section" />
-                    <option value="Radiology / X-Ray" />
-                    <option value="Dental Clinic" />
-                    <option value="Dietary / Nutrition" />
                     <option value="Hospital Administration / IT" />
                   </datalist>
                 </div>
 
+                {/* Assigned Barangay (If Rescue) */}
+                {formHospitalId === 'balamban_rescue' && (
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Assigned Balamban Barangay:</label>
+                    <select
+                      value={formAssignedBarangay}
+                      onChange={(e) => setFormAssignedBarangay(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">EOC / All 28 Barangays</option>
+                      {BALAMBAN_BARANGAYS.map((b) => (
+                        <option key={b.name} value={b.name}>
+                          Brgy. {b.name} ({b.zone})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Accreditation No.:</label>
+                  <label className="block text-slate-700 font-bold mb-1">Accreditation / Badge No.:</label>
                   <input
                     type="text"
                     value={formAccredNo}
                     onChange={(e) => setFormAccredNo(e.target.value)}
-                    placeholder="e.g. 0129845 / PHIC ACC"
+                    placeholder="e.g. MDRRMO-BAL-01 / 0129845"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">PRC License No. (Manual Entry):</label>
+                  <label className="block text-slate-700 font-bold mb-1">PRC / LTO Driver License No.:</label>
                   <input
                     type="text"
                     value={formPrcNo}
                     onChange={(e) => setFormPrcNo(e.target.value)}
-                    placeholder="e.g. 0128491"
+                    placeholder="e.g. 0128491 / LTO-PRO"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-700 font-bold mb-1">Employee ID (e.g. DOC10093 o POC1000003):</label>
+                  <label className="block text-slate-700 font-bold mb-1">Employee / Station ID:</label>
                   <input
                     type="text"
                     value={formEmpId}
                     onChange={(e) => setFormEmpId(e.target.value)}
-                    placeholder="e.g. DOC10093 / POC1000003"
+                    placeholder="e.g. MDRRMO-BAL-01 / DOC10093 / POC1000003"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -1227,7 +1376,7 @@ export default function AdminUsersPage() {
                   type="text"
                   value={formSpecialization}
                   onChange={(e) => setFormSpecialization(e.target.value)}
-                  placeholder="e.g. Attending Physician / Emergency Resuscitation / Social Work Services"
+                  placeholder="e.g. 28 Barangays Trauma Dispatch / Highway Ambulance Driver / ER Physician"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium focus:outline-none focus:border-blue-500"
                 />
               </div>

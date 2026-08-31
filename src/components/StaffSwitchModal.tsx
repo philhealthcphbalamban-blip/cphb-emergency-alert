@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import { 
   Users, 
@@ -13,10 +11,14 @@ import {
   Lock,
   HeartPulse,
   Unlock,
-  Search
+  Search,
+  KeyRound,
+  Ambulance,
+  MapPin
 } from 'lucide-react';
 import { HospitalStaff } from '@/types/staff';
 import { StaffService, AdminAuthService } from '@/lib/staffService';
+import { HospitalService } from '@/lib/hospitalService';
 
 interface Props {
   isOpen: boolean;
@@ -32,8 +34,12 @@ export const StaffSwitchModal: React.FC<Props> = ({
   onSelectStaff,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [roleCategory, setRoleCategory] = useState<'ALL' | 'DOCTORS' | 'NURSES'>('ALL');
+  const [roleCategory, setRoleCategory] = useState<'ALL' | 'DOCTORS' | 'NURSES' | 'RESCUE'>('ALL');
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
+
+  // Quick PIN login input state
+  const [quickPinInput, setQuickPinInput] = useState<string>('');
+  const [quickPinMsg, setQuickPinMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Admin PIN prompt state
   const [pendingAdminStaff, setPendingAdminStaff] = useState<HospitalStaff | null>(null);
@@ -54,7 +60,9 @@ export const StaffSwitchModal: React.FC<Props> = ({
   if (roleCategory === 'DOCTORS') {
     filtered = filtered.filter(s => s.is_doctor);
   } else if (roleCategory === 'NURSES') {
-    filtered = filtered.filter(s => !s.is_doctor && !s.is_admin);
+    filtered = filtered.filter(s => !s.is_doctor && !s.is_admin && !s.is_rescue);
+  } else if (roleCategory === 'RESCUE') {
+    filtered = filtered.filter(s => s.is_rescue || s.hospital_id === 'balamban_rescue');
   }
 
   // Filter by department
@@ -75,6 +83,21 @@ export const StaffSwitchModal: React.FC<Props> = ({
     });
   }
 
+  const handleQuickPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickPinInput.trim()) return;
+
+    const res = StaffService.loginWithPin(quickPinInput.trim());
+    if (res.success && res.staff) {
+      onSelectStaff(res.staff);
+      setQuickPinInput('');
+      onClose();
+    } else {
+      setQuickPinMsg({ text: res.message || 'Incorrect PIN code!', isError: true });
+      setTimeout(() => setQuickPinMsg(null), 3000);
+    }
+  };
+
   const handleStaffClick = (staff: HospitalStaff) => {
     if (staff.is_admin) {
       setPendingAdminStaff(staff);
@@ -83,7 +106,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
       return;
     }
 
-    // When switching to Doctor or Nurse, IMMEDIATELY REVOKE Admin Access!
+    // When switching to Doctor, Nurse or Rescue, auto switch active facility!
     sessionStorage.removeItem('cphb_admin_unlocked');
     onSelectStaff(staff);
     onClose();
@@ -106,7 +129,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-fade-in">
-      <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col h-[90vh] max-h-[850px]">
+      <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[880px]">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 bg-slate-50 shrink-0">
@@ -116,10 +139,10 @@ export const StaffSwitchModal: React.FC<Props> = ({
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
-                Hospital Duty Staff & Station Switcher
+                Personnel Login & Duty Station Switcher
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                1-Touch Instant Duty Switching • No Password Needed for Wards & Doctors
+                Hospital Medical Staff • MDRRMO Balamban Rescue 911 • PIN Code Authentication
               </p>
             </div>
           </div>
@@ -130,6 +153,44 @@ export const StaffSwitchModal: React.FC<Props> = ({
           >
             <X className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* QUICK PIN LOGIN KEYPAD STRIP */}
+        <div className="p-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-b border-slate-700 shrink-0">
+          <form onSubmit={handleQuickPinSubmit} className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 rounded-lg bg-amber-400 text-slate-950 font-black">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-black uppercase text-amber-300 block">Fast PIN Code Login:</span>
+                <span className="text-[10px] text-slate-300">Enter your 4-digit PIN (e.g. 9110, 9111, 2026, 1234)</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <input
+                type="password"
+                maxLength={6}
+                value={quickPinInput}
+                onChange={(e) => setQuickPinInput(e.target.value)}
+                placeholder="Enter PIN..."
+                className="w-28 sm:w-32 bg-black/60 border border-white/20 rounded-xl px-3 py-1.5 text-center font-mono font-black text-sm text-amber-300 tracking-widest focus:outline-none focus:border-amber-400"
+              />
+              <button
+                type="submit"
+                className="py-1.5 px-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition shadow-sm"
+              >
+                Unlock / Login
+              </button>
+            </div>
+          </form>
+
+          {quickPinMsg && (
+            <p className="mt-1.5 text-xs font-bold text-center text-red-300 bg-red-950/80 py-1 rounded-lg border border-red-500/40 animate-shake">
+              {quickPinMsg.text}
+            </p>
+          )}
         </div>
 
         {/* Current Active User Banner */}
@@ -143,13 +204,13 @@ export const StaffSwitchModal: React.FC<Props> = ({
             </div>
             <div className="min-w-0">
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
-                Active Duty Session (Permanent Standby):
+                Active Session ({currentStaff.hospital_id === 'balamban_rescue' ? '🚑 Balamban Rescue 911' : '🏥 CPH Balamban'}):
               </span>
               <span className="text-xs sm:text-sm font-black text-slate-900 truncate block">
                 {currentStaff.name} <span className="text-slate-600 font-normal">({currentStaff.role})</span> • {currentStaff.department}
               </span>
               <span className="text-[11px] font-mono text-emerald-900 font-bold">
-                Accred No: {currentStaff.accreditation_no || currentStaff.prc_license_no || 'N/A'}
+                Accred No: {currentStaff.accreditation_no || currentStaff.prc_license_no || 'N/A'} {currentStaff.pin_code && `• PIN: ${currentStaff.pin_code}`}
               </span>
             </div>
           </div>
@@ -190,11 +251,11 @@ export const StaffSwitchModal: React.FC<Props> = ({
                   roleCategory === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                All Staff ({allStaff.length})
+                All ({allStaff.length})
               </button>
               <button
                 onClick={() => setRoleCategory('DOCTORS')}
-                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg flex items-center justify-center space-x-1 transition ${
+                className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg flex items-center justify-center space-x-1 transition ${
                   roleCategory === 'DOCTORS' ? 'bg-blue-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -203,17 +264,26 @@ export const StaffSwitchModal: React.FC<Props> = ({
               </button>
               <button
                 onClick={() => setRoleCategory('NURSES')}
-                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg flex items-center justify-center space-x-1 transition ${
+                className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg flex items-center justify-center space-x-1 transition ${
                   roleCategory === 'NURSES' ? 'bg-emerald-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <HeartPulse className="h-3.5 w-3.5" />
                 <span>Nurses ({StaffService.getNurses().length})</span>
               </button>
+              <button
+                onClick={() => setRoleCategory('RESCUE')}
+                className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg flex items-center justify-center space-x-1 transition ${
+                  roleCategory === 'RESCUE' ? 'bg-red-600 text-white shadow-sm font-black' : 'text-red-700 hover:bg-red-50'
+                }`}
+              >
+                <Ambulance className="h-3.5 w-3.5" />
+                <span>Rescue 911 ({StaffService.getRescueStaff().length})</span>
+              </button>
             </div>
           </div>
 
-          {/* Clean Department Filter Sub-bar (No raw scrollbars) */}
+          {/* Clean Department Filter Sub-bar */}
           <div className="flex items-center space-x-1.5 overflow-x-auto py-1 text-xs scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {departments.slice(0, 10).map((dept) => (
               <button
@@ -225,7 +295,7 @@ export const StaffSwitchModal: React.FC<Props> = ({
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
               >
-                {dept === 'ALL' ? 'All Sections / Wards' : dept}
+                {dept === 'ALL' ? 'All Sections / Stations' : dept}
               </button>
             ))}
           </div>
@@ -236,6 +306,8 @@ export const StaffSwitchModal: React.FC<Props> = ({
           {filtered.length > 0 ? (
             filtered.map((staff) => {
               const isCurrent = staff.id === currentStaff.id;
+              const isStaffRescue = staff.is_rescue || staff.hospital_id === 'balamban_rescue';
+
               return (
                 <button
                   key={staff.id}
@@ -243,6 +315,8 @@ export const StaffSwitchModal: React.FC<Props> = ({
                   className={`w-full p-3.5 rounded-2xl border text-left flex items-center justify-between transition ${
                     isCurrent
                       ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-500/20 shadow-sm'
+                      : isStaffRescue
+                      ? 'border-red-200 bg-white hover:border-red-400 hover:bg-red-50/40 hover:shadow-xs'
                       : 'border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/40 hover:shadow-xs'
                   }`}
                 >
@@ -251,21 +325,27 @@ export const StaffSwitchModal: React.FC<Props> = ({
                       className="h-11 w-11 rounded-2xl flex items-center justify-center font-black text-xs text-white shadow-sm shrink-0"
                       style={{ backgroundColor: staff.color_hex }}
                     >
-                      {staff.avatar_initials}
+                      {isStaffRescue ? <Ambulance className="h-5 w-5" /> : staff.avatar_initials}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center space-x-2 flex-wrap">
                         <span className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">{staff.name}</span>
                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
                           staff.is_admin ? 'bg-slate-900 text-white' :
+                          isStaffRescue ? 'bg-red-100 text-red-800 border border-red-200' :
                           staff.is_doctor ? 'bg-blue-100 text-blue-800 border border-blue-200' : 
                           'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}>
                           {staff.role}
                         </span>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                          isStaffRescue ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {isStaffRescue ? '🚑 Balamban Rescue' : '🏥 CPH Balamban'}
+                        </span>
                       </div>
                       <p className="text-[11px] text-slate-600 font-semibold mt-0.5 truncate">
-                        {staff.department} • <strong className="text-blue-900 font-mono">Accred No: {staff.accreditation_no || staff.prc_license_no || 'N/A'}</strong> • ID: <span className="font-mono text-slate-500">{staff.employee_id}</span>
+                        {staff.department} • <strong className="text-blue-900 font-mono">Accred No: {staff.accreditation_no || staff.prc_license_no || 'N/A'}</strong> {staff.pin_code && <span className="text-slate-500 font-mono font-bold">• PIN: {staff.pin_code}</span>}
                       </p>
                     </div>
                   </div>

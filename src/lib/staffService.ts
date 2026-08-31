@@ -10,9 +10,10 @@ export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
     role: 'Hospital Administrator',
     department: 'Hospital Administration / IT',
     employee_id: 'CPHB-IT-0001',
+    pin_code: '1234',
     prc_license_no: 'DOH-CPHB-ADM-01',
     accreditation_no: 'DOH-CPHB-ADM-01',
-    specialization: 'Hospital Systems & User Access Management',
+    specialization: 'Hospital Systems & Super Admin',
     contact_no: 'Loc 100 / Admin Desk',
     avatar_initials: 'AD',
     color_hex: '#0f172a',
@@ -22,6 +23,105 @@ export const DEFAULT_CPHB_STAFF: HospitalStaff[] = [
     can_respond_code: true,
     can_resolve_code: true,
   },
+  {
+    id: 'staff-rescue-lead-1',
+    hospital_id: 'balamban_rescue',
+    name: 'MDRRMO Balamban 911 Dispatch Lead',
+    role: 'MDRRMO 911 Dispatcher',
+    department: 'MDRRMO Balamban Command Center',
+    employee_id: 'MDRRMO-BAL-01',
+    pin_code: '9110',
+    prc_license_no: 'MDRRMO-DISP-01',
+    accreditation_no: 'MDRRMO-BAL-DISP-01',
+    specialization: '28 Barangays & Highway Trauma Dispatch',
+    contact_no: '0917-911-0001 / EOC Desk',
+    avatar_initials: 'RD',
+    color_hex: '#dc2626',
+    is_doctor: false,
+    is_rescue: true,
+    can_trigger_code: true,
+    can_respond_code: true,
+    can_resolve_code: true,
+  },
+  {
+    id: 'staff-rescue-alpha-1',
+    hospital_id: 'balamban_rescue',
+    name: 'Balamban Rescue Alpha 1 Lead EMT',
+    role: 'Rescue Team Lead',
+    department: 'Balamban Rescue 911 Station',
+    employee_id: 'MDRRMO-AMB-01',
+    pin_code: '9111',
+    prc_license_no: 'EMT-BAL-001',
+    accreditation_no: 'MDRRMO-BLS-01',
+    specialization: 'Emergency Medical Technician & Rescue Driver',
+    contact_no: '0917-911-0002 / Alpha 1',
+    avatar_initials: 'RA',
+    color_hex: '#b91c1c',
+    is_doctor: false,
+    is_rescue: true,
+    can_trigger_code: true,
+    can_respond_code: true,
+    can_resolve_code: true,
+  },
+  {
+    id: 'staff-rescue-gaas-1',
+    hospital_id: 'balamban_rescue',
+    name: 'Brgy. Gaas PTV Driver (Transcentral)',
+    role: 'Barangay PTV Driver',
+    department: 'Barangay Emergency Response (BERT)',
+    employee_id: 'PTV-GAAS-01',
+    pin_code: '9112',
+    prc_license_no: 'LTO-PRO-GAAS',
+    accreditation_no: 'BERT-GAAS-01',
+    specialization: 'Transcentral Highway Emergency Transport',
+    assigned_barangay: 'Gaas',
+    contact_no: '0917-123-0104 / Gaas PTV',
+    avatar_initials: 'GP',
+    color_hex: '#ea580c',
+    is_doctor: false,
+    is_rescue: true,
+    can_trigger_code: true,
+    can_respond_code: true,
+    can_resolve_code: true,
+  },
+  {
+    id: 'staff-doc-santos',
+    hospital_id: 'cphb',
+    name: 'Dr. Santos, MD (ER Head)',
+    role: 'Physician',
+    department: 'Emergency Department (ER)',
+    employee_id: 'CPHB-DOC-001',
+    pin_code: '2026',
+    prc_license_no: 'PRC-MD-088921',
+    accreditation_no: 'PH-MD-088921',
+    specialization: 'Emergency Medicine / Trauma Surgery',
+    contact_no: 'Loc 102 / 0917-555-0102',
+    avatar_initials: 'DS',
+    color_hex: '#2563eb',
+    is_doctor: true,
+    can_trigger_code: true,
+    can_respond_code: true,
+    can_resolve_code: true,
+  },
+  {
+    id: 'staff-nurse-ward4',
+    hospital_id: 'cphb',
+    name: 'Nurse Station Lead (Ward 4)',
+    role: 'Charge Nurse',
+    department: 'MEDICAL WARD (WARD 4)',
+    employee_id: 'CPHB-NUR-041',
+    pin_code: '4444',
+    prc_license_no: 'PRC-RN-104921',
+    accreditation_no: 'PH-RN-104921',
+    specialization: 'Medical-Surgical Nursing',
+    contact_no: 'Loc 104 / Ward 4 Desk',
+    avatar_initials: 'NW',
+    color_hex: '#059669',
+    is_doctor: false,
+    can_trigger_code: true,
+    can_respond_code: true,
+    can_resolve_code: true,
+  }
 ];
 
 export const CPHB_STAFF_MEMBERS = DEFAULT_CPHB_STAFF;
@@ -330,7 +430,48 @@ export class StaffService {
   }
 
   public static getNurses(): HospitalStaff[] {
-    return this.getAllStaff().filter(s => !s.is_doctor && !s.is_admin && s.role !== 'Security Officer');
+    return this.getAllStaff().filter(s => !s.is_doctor && !s.is_admin && !s.is_rescue && s.role !== 'Security Officer');
+  }
+
+  public static getRescueStaff(): HospitalStaff[] {
+    return this.getAllStaff().filter(s => s.is_rescue || s.hospital_id === 'balamban_rescue');
+  }
+
+  public static getStaffByFacility(facilityId: string): HospitalStaff[] {
+    const all = this.getAllStaff();
+    if (facilityId === 'balamban_rescue') {
+      return all.filter(s => s.is_rescue || s.hospital_id === 'balamban_rescue');
+    }
+    return all.filter(s => (s.hospital_id || 'cphb') === facilityId);
+  }
+
+  /**
+   * Fast 1-tap PIN verification & instant login
+   */
+  public static loginWithPin(pin: string): { success: boolean; staff?: HospitalStaff; message?: string } {
+    const trimmed = pin.trim();
+    if (!trimmed) return { success: false, message: 'Please enter your PIN code.' };
+
+    const all = this.getAllStaff();
+    const matched = all.find(s => s.pin_code && s.pin_code.trim() === trimmed);
+
+    if (matched) {
+      this.setCurrentStaff(matched);
+      return { success: true, staff: matched };
+    }
+
+    // Check if Super Admin master PIN was entered
+    const masterPin = AdminAuthService.getPin();
+    if (trimmed === masterPin) {
+      const adminStaff = all.find(s => s.is_admin) || DEFAULT_CPHB_STAFF[0];
+      this.setCurrentStaff(adminStaff);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('cphb_admin_unlocked', 'true');
+      }
+      return { success: true, staff: adminStaff };
+    }
+
+    return { success: false, message: 'Incorrect PIN. Please try again.' };
   }
 
   public static getCurrentStaff(): HospitalStaff {
