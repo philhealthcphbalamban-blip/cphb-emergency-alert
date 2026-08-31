@@ -792,7 +792,7 @@ export default function AdminUsersPage() {
                       </span>
                       {staff.pin_code && (
                         <span className="font-mono font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[10px]">
-                          PIN: {staff.pin_code}
+                          {isAuthenticated ? `PIN: ${staff.pin_code}` : '🔒 PIN Active'}
                         </span>
                       )}
                     </div>
@@ -902,14 +902,20 @@ export default function AdminUsersPage() {
                         {staff.department}
                       </td>
 
-                      {/* Login PIN */}
+                      {/* Login PIN (Protected from unauthorized viewers) */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         {staff.pin_code ? (
-                          <span className="font-mono font-black text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[11px]">
-                            PIN: {staff.pin_code}
-                          </span>
+                          isAuthenticated ? (
+                            <span className="font-mono font-black text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[11px]">
+                              PIN: {staff.pin_code}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[10px] font-bold">
+                              🔒 PIN Active
+                            </span>
+                          )
                         ) : (
-                          <span className="text-slate-400 text-[10px]">No PIN</span>
+                          <span className="text-slate-400 text-[10px]">-</span>
                         )}
                       </td>
 

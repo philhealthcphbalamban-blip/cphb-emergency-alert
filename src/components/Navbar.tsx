@@ -95,7 +95,8 @@ export const Navbar: React.FC = () => {
     { name: 'Dispatch 911', href: '/trigger', icon: Ambulance, highlight: true },
     { name: 'Rescue TV Screen', href: '/rescue/monitor', icon: Tv },
     { name: 'PTV Responders', href: '/responder', icon: Smartphone },
-    { name: '28 Barangays Directory', href: '/rescue', icon: MapPin },
+    { name: '28 Barangays', href: '/rescue', icon: MapPin },
+    { name: 'Admin Staff', href: '/admin/users', icon: Users },
   ] : [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Trigger Code', href: '/trigger', icon: ShieldAlert, highlight: true },

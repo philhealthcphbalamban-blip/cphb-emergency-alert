@@ -344,8 +344,16 @@ export const StaffSwitchModal: React.FC<Props> = ({
                           {isStaffRescue ? '🚑 Balamban Rescue' : '🏥 CPH Balamban'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 font-semibold mt-0.5 truncate">
-                        {staff.department} • <strong className="text-blue-900 font-mono">Accred No: {staff.accreditation_no || staff.prc_license_no || 'N/A'}</strong> {staff.pin_code && <span className="text-slate-500 font-mono font-bold">• PIN: {staff.pin_code}</span>}
+                      <p className="text-[11px] text-slate-600 font-semibold mt-0.5 truncate flex items-center space-x-1.5 flex-wrap">
+                        <span>{staff.department}</span>
+                        <span>•</span>
+                        <strong className="text-blue-900 font-mono">ID: {staff.employee_id}</strong>
+                        {staff.pin_code && (
+                          <span className="text-purple-700 font-mono font-bold text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 inline-flex items-center">
+                            <Lock className="h-2.5 w-2.5 mr-0.5 inline" />
+                            PIN Active
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
