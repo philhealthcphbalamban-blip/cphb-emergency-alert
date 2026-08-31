@@ -11,6 +11,7 @@ export class AudioController {
   private repeatTimer: any = null;
   private activeAlerts: EmergencyAlert[] = [];
   private activeCommunityAlerts: CommunityEmergencyAlert[] = [];
+  private currentSequenceKey: string = '';
   private isMuted = false;
   private isVoiceDisabled = false;
   private currentSpeechAbort: (() => void) | null = null;
@@ -23,7 +24,6 @@ export class AudioController {
           if (event.data?.type === 'AUDIO_KILL_ALL') {
             this.stopAllLocal();
           } else if (event.data?.type === 'AUDIO_TRIGGER') {
-            // Received trigger from peer tab
             if (event.data.alerts) {
               this.activeAlerts = event.data.alerts;
             }
@@ -80,9 +80,19 @@ export class AudioController {
     this.activeAlerts = alerts;
 
     if (alerts.length === 0) {
+      this.currentSequenceKey = '';
       this.stopAllImmediate();
       return;
     }
+
+    const sequenceKey = alerts.map(a => `${a.id}_${a.status}`).sort().join(',');
+
+    // DO NOT interrupt ongoing voice chime if the exact same alerts are still active
+    if (this.currentSequenceKey === sequenceKey && this.state !== 'IDLE') {
+      return;
+    }
+
+    this.currentSequenceKey = sequenceKey;
 
     if (this.isMuted) return;
 
@@ -99,7 +109,7 @@ export class AudioController {
       announcement = `Attention all medical personnel: Multiple concurrent codes active. ${parts.join('. Also active: ')}.`;
     }
 
-    this.playSequence(announcement, priorityAlert.code_details?.siren_pattern || 'hi_lo');
+    this.playSequence(announcement, priorityAlert.code_details?.siren_pattern || 'hi_lo', sequenceKey);
   }
 
   /**
@@ -110,9 +120,18 @@ export class AudioController {
     this.activeCommunityAlerts = active;
 
     if (active.length === 0) {
+      this.currentSequenceKey = '';
       this.stopAllImmediate();
       return;
     }
+
+    const sequenceKey = 'RESCUE_' + active.map(a => `${a.id}_${a.status}`).sort().join(',');
+
+    if (this.currentSequenceKey === sequenceKey && this.state !== 'IDLE') {
+      return;
+    }
+
+    this.currentSequenceKey = sequenceKey;
 
     if (this.isMuted) return;
 
@@ -128,7 +147,7 @@ export class AudioController {
     }
 
     const pattern: SirenPattern = (first.emergency_type === 'CODE_TRAUMA' || first.emergency_type === 'CODE_RESCUE') ? 'wail' : 'hi_lo';
-    this.playSequence(announcement, pattern);
+    this.playSequence(announcement, pattern, sequenceKey);
   }
 
   /**
@@ -138,9 +157,10 @@ export class AudioController {
    * 3. Continuous Background Pulse Siren
    * Repeats every 28 seconds cleanly.
    */
-  private async playSequence(speechText: string, pattern: SirenPattern) {
+  private async playSequence(speechText: string, pattern: SirenPattern, sequenceKey: string) {
     this.clearRepeatTimer();
-    this.stopAllLocal();
+    audioEngine.stopSiren();
+    audioEngine.stopSpeech();
 
     if (this.isMuted) return;
 
@@ -149,7 +169,7 @@ export class AudioController {
       this.state = 'CHIMING';
       await audioEngine.playChime();
 
-      if (this.getState() === 'IDLE') return; // Cancelled while chiming
+      if (this.currentSequenceKey !== sequenceKey || this.getState() === 'IDLE') return;
 
       // Step 2: Voice Dispatch
       if (!this.isVoiceDisabled) {
@@ -157,7 +177,7 @@ export class AudioController {
         await audioEngine.speak(speechText);
       }
 
-      if (this.getState() === 'IDLE') return; // Cancelled while speaking
+      if (this.currentSequenceKey !== sequenceKey || this.getState() === 'IDLE') return;
 
       // Step 3: Siren
       this.state = 'SIREN_ACTIVE';
@@ -165,7 +185,7 @@ export class AudioController {
 
       // Setup periodic repetition (28s interval)
       this.repeatTimer = setInterval(async () => {
-        if (this.activeAlerts.length > 0 && !this.isMuted) {
+        if (this.currentSequenceKey === sequenceKey && !this.isMuted) {
           audioEngine.stopSiren();
           
           if (!this.isVoiceDisabled) {
@@ -173,7 +193,7 @@ export class AudioController {
             await audioEngine.speak(speechText);
           }
 
-          if (this.getState() !== 'IDLE' && !this.isMuted) {
+          if (this.currentSequenceKey === sequenceKey && this.getState() !== 'IDLE' && !this.isMuted) {
             this.state = 'SIREN_ACTIVE';
             audioEngine.startSiren(pattern, 0.10);
           }
@@ -190,6 +210,7 @@ export class AudioController {
    * Broadcasts to all peer tabs to ensure 100% sound silence across the entire browser.
    */
   public stopAllImmediate() {
+    this.currentSequenceKey = '';
     this.stopAllLocal();
 
     // Broadcast kill command across all open hospital tabs
@@ -202,6 +223,7 @@ export class AudioController {
 
   private stopAllLocal() {
     this.state = 'IDLE';
+    this.currentSequenceKey = '';
     this.clearRepeatTimer();
     audioEngine.stopSiren();
     audioEngine.stopSpeech();
