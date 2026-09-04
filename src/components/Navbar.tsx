@@ -91,28 +91,28 @@ export const Navbar: React.FC = () => {
   const isRescue = currentHospital.isRescue || currentHospital.id === 'balamban_rescue';
 
   const navItems = isRescue ? [
-    { name: 'EOC Dashboard', href: '/', icon: Home },
+    { name: 'EOC Hub', href: '/', icon: Home },
     { name: 'Dispatch 911', href: '/trigger', icon: Ambulance, highlight: true },
-    { name: 'Rescue TV Screen', href: '/rescue/monitor', icon: Tv },
-    { name: 'PTV Responders', href: '/responder', icon: Smartphone },
+    { name: 'Rescue TV', href: '/rescue/monitor', icon: Tv },
+    { name: 'PTV Fleet', href: '/responder', icon: Smartphone },
     { name: '28 Barangays', href: '/rescue', icon: MapPin },
-    { name: 'Admin Staff', href: '/admin/users', icon: Users },
+    { name: 'Personnel', href: '/admin/users', icon: Users },
   ] : [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Trigger Code', href: '/trigger', icon: ShieldAlert, highlight: true },
     { name: 'TV Monitor', href: '/monitor', icon: Tv },
     { name: 'Responder', href: '/responder', icon: Smartphone },
     { name: 'Locations', href: '/admin/locations', icon: MapPin },
-    { name: 'Admin Staff', href: '/admin/users', icon: Users },
+    { name: 'Personnel', href: '/admin/users', icon: Users },
   ];
 
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="w-full max-w-[98%] mx-auto flex h-16 items-center justify-between px-3 sm:px-6">
+        <div className="w-full max-w-[98%] mx-auto flex h-16 items-center justify-between px-2 sm:px-4 lg:px-6">
           
           {/* Brand & Hospital Info */}
-          <Link href="/" className="flex items-center space-x-3 group shrink-0">
+          <Link href="/" className="flex items-center space-x-2 sm:space-x-3 group shrink-0">
             <div 
               className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm text-white transition shrink-0"
               style={{ backgroundColor: currentHospital.colorHex }}
@@ -121,7 +121,7 @@ export const Navbar: React.FC = () => {
             </div>
             <div className="shrink-0">
               <div className="flex items-center space-x-1.5 whitespace-nowrap">
-                <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900">
+                <span className="font-extrabold text-xs sm:text-sm lg:text-base tracking-tight text-slate-900">
                   {isRescue ? 'BALAMBAN RESCUE 911' : `${currentHospital.code} CODE ALERT`}
                 </span>
                 <span className={`rounded px-1.5 py-0.2 text-[9px] font-black uppercase border ${
@@ -129,18 +129,18 @@ export const Navbar: React.FC = () => {
                 }`}>
                   {isRescue ? 'MDRRMO' : 'RAPID'}
                 </span>
-                <span className="hidden xl:inline-block rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800 border border-blue-200">
+                <span className="hidden 2xl:inline-block rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800 border border-blue-200">
                   {isRescue ? '28 BRGYS' : 'iHOMIS+'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium hidden sm:block whitespace-nowrap">
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block whitespace-nowrap">
                 {currentHospital.name}
               </p>
             </div>
           </Link>
 
           {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <nav className="hidden lg:flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -148,7 +148,7 @@ export const Navbar: React.FC = () => {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                     isActive
                       ? item.highlight 
                         ? 'bg-red-600 text-white shadow-sm'
@@ -156,7 +156,7 @@ export const Navbar: React.FC = () => {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
                   }`}
                 >
-                  <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
                   <span>{item.name}</span>
                 </Link>
               );
@@ -164,9 +164,9 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Status Indicators, LAN Share & Active Staff Switcher */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
             
-            {/* Hospital Switcher Button (Locked for regular staff; Switchable for Admin) */}
+            {/* Hospital Switcher Button */}
             <button
               onClick={() => {
                 if (currentStaff.is_admin) {
@@ -175,7 +175,7 @@ export const Navbar: React.FC = () => {
                   alert(`🔒 Facility Locked: You are logged in as ${currentStaff.name} assigned to ${currentHospital.name}. Only Hospital Administrators can change facility dispatch.`);
                 }
               }}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm shrink-0 ${
                 currentStaff.is_admin
                   ? 'border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-900 cursor-pointer'
                   : 'border-slate-200 bg-slate-100/90 text-slate-700 cursor-default'
@@ -188,35 +188,36 @@ export const Navbar: React.FC = () => {
               >
                 {currentHospital.code.slice(0, 3)}
               </div>
-              <span className="font-extrabold hidden sm:inline-block">
+              <span className="font-extrabold hidden md:inline-block whitespace-nowrap">
                 {currentHospital.shortName}
               </span>
               {currentStaff.is_admin ? (
-                <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+                <ChevronDown className="h-3.5 w-3.5 text-blue-600 shrink-0" />
               ) : (
-                <Lock className="h-3 w-3 text-slate-400" />
+                <Lock className="h-3 w-3 text-slate-400 shrink-0" />
               )}
             </button>
 
             {/* Share LAN IP Button */}
             <button
               onClick={copyLanUrl}
-              className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-bold text-blue-800 transition shadow-sm"
-              title="Click to copy LAN URL for other devices on the hospital Wi-Fi"
+              className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-bold text-blue-800 transition shadow-sm shrink-0"
+              title="Click to copy LAN URL for other devices on the hospital Wi-Fi (http://192.168.12.240:3000)"
             >
-              <Wifi className="h-3.5 w-3.5 text-blue-600" />
-              <span>{lanCopied ? 'Copied IP!' : '192.168.12.240:3000'}</span>
+              <Wifi className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+              <span className="hidden 2xl:inline">{lanCopied ? 'Copied IP!' : '192.168.12.240:3000'}</span>
+              <span className="2xl:hidden font-mono text-[11px]">{lanCopied ? 'Copied!' : 'LAN IP'}</span>
             </button>
 
             {/* Active Duty Staff Switcher Button */}
             <button
               onClick={() => setModalOpen(true)}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+              className={`flex items-center space-x-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm shrink-0 ${
                 currentStaff.is_admin 
                   ? 'bg-slate-900 border-slate-800 text-white hover:bg-slate-800'
                   : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
               }`}
-              title="Click to switch active duty nurse or doctor"
+              title="Click to switch active duty nurse, doctor, or rescue responder"
             >
               <div
                 className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[10px] font-black shrink-0 shadow-sm"
@@ -224,15 +225,15 @@ export const Navbar: React.FC = () => {
               >
                 {currentStaff.avatar_initials}
               </div>
-              <div className="text-left hidden sm:block">
-                <span className={`block text-[11px] font-extrabold leading-tight ${currentStaff.is_admin ? 'text-white' : 'text-slate-900'}`}>
+              <div className="text-left hidden md:block max-w-[90px] lg:max-w-[120px] xl:max-w-[150px] truncate">
+                <span className={`block text-[11px] font-extrabold leading-tight truncate ${currentStaff.is_admin ? 'text-white' : 'text-slate-900'}`}>
                   {currentStaff.name}
                 </span>
-                <span className={`block text-[9px] leading-none ${currentStaff.is_admin ? 'text-emerald-400 font-bold' : 'text-slate-500 font-medium'}`}>
+                <span className={`block text-[9px] leading-none truncate ${currentStaff.is_admin ? 'text-emerald-400 font-bold' : 'text-slate-500 font-medium'}`}>
                   {currentStaff.is_admin ? '● Hospital Admin' : `${currentStaff.role} • ${currentStaff.department}`}
                 </span>
               </div>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             </button>
 
             {/* Quick Log Out Admin Button */}
